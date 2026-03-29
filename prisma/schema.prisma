@@ -1,0 +1,104 @@
+// AI Ad Studio — Projects > Tracks > Clips (PostgreSQL)
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum TrackType {
+  VISUAL // Video / image layers
+  AUDIO // Voiceover, music, SFX
+  TEXT // Headlines, lower-thirds
+}
+
+/// Broad media classification; fine-grained flags live in clipProperties (JSON).
+enum ClipMediaType {
+  VIDEO
+  IMAGE
+  AUDIO
+  VOICEOVER
+  MUSIC
+  TEXT
+  SUBTITLE
+  WATERMARK
+  SHAPE
+  GENERIC
+}
+
+model Project {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  /// Arbitrary project-level data (export settings, aspect ratio, target duration seconds, etc.)
+  metadata    Json     @default("{}")
+  /// Primary/secondary colors, fonts, logo URLs, tone presets — drives Brand Kit + instant restyle.
+  brandConfig Json     @default("{}")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  tracks      Track[]
+
+  @@index([updatedAt])
+}
+
+model Track {
+  id        String    @id @default(cuid())
+  projectId String
+  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  type      TrackType
+  /// Sort order within the project (0 = bottom / back; higher = front for visuals — UI interprets per type).
+  index     Int
+  name      String?
+  /// Mute/solo/color labels, mixer routing hints, etc.
+  metadata  Json      @default("{}")
+  clips     Clip[]
+
+  @@unique([projectId, index])
+  @@index([projectId])
+}
+
+model Clip {
+  id       String @id @default(cuid())
+  trackId  String
+  track    Track  @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  /// Timeline position in seconds (float for sub-frame accuracy when converting to frames).
+  startTime Float
+  /// Duration in seconds.
+  duration  Float
+
+  mediaType ClipMediaType
+  /// Remote or uploaded asset (video, image, audio file). Text-only clips may omit.
+  assetUrl  String?
+
+  label String?
+
+  /// Layout & motion: position, anchor, scale, rotation, opacity, blur, masks, crop, z-index hints, per-keyframe arrays, etc.
+  transformProps Json @default("{}")
+
+  /// Large extensible bag for 100+ editor-exposed fields (filters, blend modes, captions style, ElevenLabs voice id, etc.).
+  clipProperties Json @default("{}")
+
+  /// Primary narrative payload: plain text, rich text, script segments, scene id, Gemini prompt fragments.
+  content Json?
+
+  /// Gain, pan, fade regions, playback rate, chunked TTS metadata, loudness — audio clips & VO.
+  audioProps Json?
+
+  /// Entry animation preset + keyframes (fade, slide, pop, stagger children).
+  animationIn Json?
+
+  /// Exit animation preset + keyframes.
+  animationOut Json?
+
+  /// AI provenance, Firecrawl asset refs, lock flags, user notes.
+  metadata Json @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([trackId])
+  @@index([startTime])
+}
