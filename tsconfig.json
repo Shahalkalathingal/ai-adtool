@@ -30,12 +30,13 @@
     }
   },
   "include": [
-    "next-env.d.ts",
+    "**/*.mts",
     "**/*.ts",
     "**/*.tsx",
-    ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts",
-    "**/*.mts"
+    ".next/types/**/*.ts",
+    "next-env.d.ts",
+    "..\\..\\..\\..\\AppData\\Local\\ai-adtool-next-cache\\db8f72b3f5383d13/types/**/*.ts"
   ],
   "exclude": [
     "node_modules"

@@ -302,8 +302,8 @@ export function createInitialTimeline(projectId: string): TimelineState {
     playheadFrame: 0,
     isPlaying: false,
     selectedClipId: null,
-    studioPanel: "bottomBanner",
-  };
+    studioPanel: "slideshow",
+ };
 }
 
 type TimelineActions = {
