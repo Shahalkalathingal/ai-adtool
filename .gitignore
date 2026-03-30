@@ -13,6 +13,9 @@
 # testing
 /coverage
 
+# remotion (local bundle + Vercel snapshot build)
+/.remotion/
+
 # next.js
 /.next/
 /.next-local/
@@ -42,3 +45,5 @@ yarn-error.log*
 next-env.d.ts
 
 /src/generated/prisma
+
+.remotion

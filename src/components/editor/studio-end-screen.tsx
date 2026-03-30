@@ -25,6 +25,20 @@ export function StudioEndScreen() {
     typeof bc.endScreenTagline === "string" ? bc.endScreenTagline : "";
   const endPhone =
     typeof bc.endScreenPhone === "string" ? bc.endScreenPhone : "";
+  const endCtaText =
+    typeof bc.endScreenCtaText === "string" ? bc.endScreenCtaText : "";
+  const endCtaBg1 =
+    typeof bc.endScreenCtaBg1 === "string" && bc.endScreenCtaBg1
+      ? bc.endScreenCtaBg1
+      : bc.primaryColor;
+  const endCtaBg2 =
+    typeof bc.endScreenCtaBg2 === "string" && bc.endScreenCtaBg2
+      ? bc.endScreenCtaBg2
+      : bc.primaryColor;
+  const endCtaTextColor =
+    typeof bc.endScreenCtaTextColor === "string" && bc.endScreenCtaTextColor
+      ? bc.endScreenCtaTextColor
+      : "#0a0a0a";
 
   return (
     <Card className="border-border/60 bg-card/40 shadow-none">
@@ -66,6 +80,59 @@ export function StudioEndScreen() {
             rows={2}
             placeholder="Call us today — we’re here to help."
             className="resize-none text-sm"
+          />
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor={`${uid}-cta-text`} className="text-[11px] uppercase">
+            Button text (End screen CTA)
+          </Label>
+          <Input
+            id={`${uid}-cta-text`}
+            value={endCtaText}
+            onChange={(e) => setBrandKit({ endScreenCtaText: e.target.value })}
+            placeholder="SHOP THE DEAL"
+            className="h-9 text-sm"
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label htmlFor={`${uid}-cta-bg1`} className="text-[11px] uppercase">
+              Button color A
+            </Label>
+            <Input
+              id={`${uid}-cta-bg1`}
+              type="color"
+              value={endCtaBg1}
+              onChange={(e) => setBrandKit({ endScreenCtaBg1: e.target.value })}
+              className="h-9 w-full p-1"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor={`${uid}-cta-bg2`} className="text-[11px] uppercase">
+              Button color B
+            </Label>
+            <Input
+              id={`${uid}-cta-bg2`}
+              type="color"
+              value={endCtaBg2}
+              onChange={(e) => setBrandKit({ endScreenCtaBg2: e.target.value })}
+              className="h-9 w-full p-1"
+            />
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor={`${uid}-cta-fg`} className="text-[11px] uppercase">
+            Button text color
+          </Label>
+          <Input
+            id={`${uid}-cta-fg`}
+            type="color"
+            value={endCtaTextColor}
+            onChange={(e) => setBrandKit({ endScreenCtaTextColor: e.target.value })}
+            className="h-9 w-full p-1"
           />
         </div>
 

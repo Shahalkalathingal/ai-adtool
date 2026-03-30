@@ -28,6 +28,14 @@ export type BrandKitState = {
   endScreenTagline?: string;
   /** Outro card: large phone (falls back to `phone` when empty). */
   endScreenPhone?: string;
+  /** Outro card CTA customization. */
+  endScreenCtaText?: string;
+  /** CTA button gradient start (expects `#RRGGBB`). */
+  endScreenCtaBg1?: string;
+  /** CTA button gradient end (expects `#RRGGBB`). */
+  endScreenCtaBg2?: string;
+  /** CTA button text color (expects `#RRGGBB`). */
+  endScreenCtaTextColor?: string;
   /** Brand slogan / tagline (header + trust layer). */
   tagline?: string;
 };

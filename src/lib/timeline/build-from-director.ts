@@ -267,6 +267,7 @@ export function buildTimelineFromDirectorPlan(
       sceneCount: plan.scenes.length,
       showQrOverlay: true,
       showFocusCardOverlay: true,
+      highProtectionWatermark: false,
       musicMood: plan.musicMood,
       directorModel: "gemini-2.0-flash",
       sourceUrl: options?.sourceUrl,

@@ -1,8 +1,9 @@
 import { useState } from "react";
+import { Globe, MapPin, Phone } from "lucide-react";
+import { Audio } from "@remotion/media";
 import { QRCodeSVG } from "qrcode.react";
 import {
   AbsoluteFill,
-  Audio,
   interpolate,
   Sequence,
   staticFile,
@@ -13,7 +14,6 @@ import {
   getMusicClipAtSecond,
   getVoiceoverClipAtSecond,
   getTextClipAtSecond,
-  getVisualClipAtSecond,
   headlineFromRemotionClip,
   type RemotionClipInput,
   type RemotionTrackInput,
@@ -25,6 +25,9 @@ import {
   voiceVolumePctFromAudioProps,
 } from "@/lib/audio/volume-pct";
 import { HEADLINE_FONT } from "@/remotion/components/HeadlineLayer";
+
+const LUX_DETAIL_FONT =
+  'var(--font-geist-sans, "Geist Sans"), Inter, ui-sans-serif, system-ui, sans-serif';
 
 export type AdStudioTimelineInput = {
   tracks: RemotionTrackInput[];
@@ -39,7 +42,7 @@ export type AdStudioCompositionProps = {
   brandPrimary: string;
   brandSecondary: string;
   showQrOverlay: boolean;
-  /** Bottom focus card (address / phone strip). When false, only the top brand header shows. */
+  /** Bottom banner card background overlay. OFF hides only the background (content stays). */
   showFocusCardOverlay: boolean;
   /** URL encoded into the QR (typically website). */
   qrValue: string;
@@ -52,10 +55,20 @@ export type AdStudioCompositionProps = {
     endScreenTagline: string;
     endScreenPhone: string;
     tagline: string;
+    endScreenCtaText?: string;
+    endScreenCtaBg1?: string;
+    endScreenCtaBg2?: string;
+    endScreenCtaTextColor?: string;
   };
   voiceoverSrc: string | null;
   /** Stretch/shrink VO so it matches final video duration. */
   voiceoverRate: number;
+};
+
+/** Server export: `calculateMetadata` reads `__*` keys; composition ignores them. */
+export type AdStudioExportInputProps = AdStudioCompositionProps & {
+  __compositionDurationInFrames: number;
+  __compositionFps: number;
 };
 
 const PLACEHOLDER_STILL =
@@ -105,7 +118,6 @@ function SafeSceneImg({
       alt=""
       style={{
         ...style,
-        filter: "brightness(0.8) contrast(1.1)",
       }}
       onError={() => setBad(true)}
     />
@@ -154,8 +166,272 @@ function metaString(m: Record<string, unknown>, key: string): string {
   return typeof v === "string" ? v : "";
 }
 
-function isEndVisual(visual: RemotionClipInput | null): boolean {
-  return visual?.metadata?.isEndScene === true;
+function metaBool(m: Record<string, unknown>, key: string): boolean {
+  return m[key] === true;
+}
+
+function BrandWatermarkTile({
+  origin,
+  logoUrl,
+}: {
+  origin: string;
+  logoUrl: string;
+}) {
+  const u = absUrl(origin, logoUrl);
+  if (!u) return null;
+  return (
+    <AbsoluteFill
+      style={{
+        pointerEvents: "none",
+        overflow: "hidden",
+        opacity: 0.1,
+      }}
+    >
+      <div
+        style={{
+          position: "absolute",
+          inset: "-25%",
+          backgroundImage: `url(${u})`,
+          backgroundSize: "min(22vw, 200px) auto",
+          backgroundRepeat: "repeat",
+          backgroundPosition: "center",
+          transform: "rotate(-12deg)",
+        }}
+        aria-hidden
+      />
+    </AbsoluteFill>
+  );
+}
+
+function laneOf(track: RemotionTrackInput): string {
+  const m = track.metadata;
+  return typeof m?.lane === "string" ? m.lane : "";
+}
+
+function listNonEndVisualClips(
+  tracks: RemotionTrackInput[],
+  clipsById: Record<string, RemotionClipInput>,
+): RemotionClipInput[] {
+  const ordered = [...tracks].sort((a, b) => a.index - b.index);
+  const out: RemotionClipInput[] = [];
+  for (const tr of ordered) {
+    if (laneOf(tr) !== "visual") continue;
+    for (const cid of tr.clipIds) {
+      const c = clipsById[cid];
+      if (!c) continue;
+      if (c.mediaType !== "VIDEO" && c.mediaType !== "IMAGE") continue;
+      if (c.metadata?.isEndScene === true) continue;
+      out.push(c);
+    }
+  }
+  out.sort((a, b) => a.startTime - b.startTime);
+  return out;
+}
+
+function findEndSceneStartSec(
+  tracks: RemotionTrackInput[],
+  clipsById: Record<string, RemotionClipInput>,
+): number | null {
+  const ordered = [...tracks].sort((a, b) => a.index - b.index);
+  for (const tr of ordered) {
+    if (laneOf(tr) !== "visual") continue;
+    for (const cid of tr.clipIds) {
+      const c = clipsById[cid];
+      if (!c) continue;
+      if (c.metadata?.isEndScene === true) return c.startTime;
+    }
+  }
+  return null;
+}
+
+const INTERP_CLAMP = {
+  extrapolateLeft: "clamp" as const,
+  extrapolateRight: "clamp" as const,
+};
+
+/** Cross-dissolve weights; pairwise uses bottom=A opacity 1, top=B opacity u. */
+function getCrossfadeLayers(
+  t: number,
+  clips: RemotionClipInput[],
+  crossSec: number,
+  endStart: number,
+): { clip: RemotionClipInput; weight: number }[] {
+  if (!clips.length || t < 0 || t >= endStart) return [];
+
+  for (let i = 0; i < clips.length - 1; i++) {
+    const a = clips[i];
+    const b = clips[i + 1];
+    const cut = b.startTime;
+    const aEnd = a.startTime + a.duration;
+    if (Math.abs(cut - aEnd) > 0.03) continue;
+
+    if (t >= cut - crossSec / 2 && t <= cut + crossSec / 2) {
+      const u = interpolate(
+        t,
+        [cut - crossSec / 2, cut + crossSec / 2],
+        [0, 1],
+        INTERP_CLAMP,
+      );
+      return [
+        { clip: a, weight: 1 - u },
+        { clip: b, weight: u },
+      ];
+    }
+  }
+
+  for (let i = 0; i < clips.length; i++) {
+    const c = clips[i];
+    const S = c.startTime;
+    const E = c.startTime + c.duration;
+    if (t >= S && t < E) {
+      let w = 1;
+      if (i === 0) {
+        w *= interpolate(t, [S, S + crossSec], [0, 1], INTERP_CLAMP);
+      }
+      if (i === clips.length - 1 && endStart < Infinity) {
+        w *= interpolate(t, [endStart - crossSec, endStart], [1, 0], INTERP_CLAMP);
+      }
+      if (w > 0.005) return [{ clip: c, weight: w }];
+      return [];
+    }
+  }
+
+  return [];
+}
+
+function SceneKenBurnsImage({
+  clip,
+  frame,
+  fps,
+  origin,
+}: {
+  clip: RemotionClipInput;
+  frame: number;
+  fps: number;
+  origin: string;
+}) {
+  const clipStartF = Math.round(clip.startTime * fps);
+  const clipDurF = Math.max(1, Math.round(clip.duration * fps));
+  const relFrame = frame - clipStartF;
+
+  const vtp = (clip.transformProps ?? {}) as {
+    opacity?: number;
+    x?: number;
+    y?: number;
+    scaleX?: number;
+  };
+  const imgOpacityMul = vtp.opacity ?? 1;
+  const assetDim = clip.assetUrl ? 1 : 0.85;
+
+  const ken = interpolate(relFrame, [0, clipDurF], [1, 1.1], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "extend",
+  });
+  const panPath = kenBurnsPan(clip);
+  const panSpan = Math.max(1, clipDurF - 1);
+  const panT = interpolate(relFrame, [0, panSpan], [0, 1], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "extend",
+  });
+  const panX =
+    (vtp.x ?? 0) +
+    interpolate(panT, [0, 1], [panPath.x0, panPath.x1], {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "extend",
+    });
+  const panY =
+    (vtp.y ?? 0) +
+    interpolate(panT, [0, 1], [panPath.y0, panPath.y1], {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "extend",
+    });
+  const userScale = vtp.scaleX ?? 1;
+
+  const bgSrc = absUrl(origin, clip.assetUrl ?? null);
+
+  if (!bgSrc) {
+    return (
+      <AbsoluteFill
+        style={{
+          background:
+            "linear-gradient(165deg, #0c0c0e 0%, #1a1a1f 45%, #09090b 100%)",
+          opacity: imgOpacityMul * assetDim,
+        }}
+      />
+    );
+  }
+
+  return (
+    <AbsoluteFill
+      style={{
+        opacity: imgOpacityMul * assetDim,
+        transform: `scale(${ken * userScale}) translate(${panX}px, ${panY}px)`,
+        transformOrigin: "50% 40%",
+      }}
+    >
+      <SafeSceneImg
+        src={bgSrc}
+        style={{
+          width: "100%",
+          height: "100%",
+          objectFit: "cover",
+        }}
+      />
+    </AbsoluteFill>
+  );
+}
+
+function SceneCrossfadeStack({
+  frame,
+  fps,
+  clips,
+  origin,
+  crossSec,
+  endStartSec,
+}: {
+  frame: number;
+  fps: number;
+  clips: RemotionClipInput[];
+  origin: string;
+  crossSec: number;
+  endStartSec: number;
+}) {
+  const t = frame / fps;
+  const layers = getCrossfadeLayers(t, clips, crossSec, endStartSec);
+
+  if (layers.length === 0) {
+    return (
+      <AbsoluteFill
+        style={{ backgroundColor: "#0a0a0a" }}
+      />
+    );
+  }
+
+  if (layers.length === 1) {
+    const { clip, weight } = layers[0];
+    return (
+      <AbsoluteFill style={{ opacity: weight }}>
+        <SceneKenBurnsImage clip={clip} frame={frame} fps={fps} origin={origin} />
+      </AbsoluteFill>
+    );
+  }
+
+  const [x, y] =
+    layers[0].clip.startTime <= layers[1].clip.startTime
+      ? [layers[0], layers[1]]
+      : [layers[1], layers[0]];
+  const uBlend = y.weight;
+
+  return (
+    <>
+      <AbsoluteFill style={{ opacity: 1 }}>
+        <SceneKenBurnsImage clip={x.clip} frame={frame} fps={fps} origin={origin} />
+      </AbsoluteFill>
+      <AbsoluteFill style={{ opacity: uBlend }}>
+        <SceneKenBurnsImage clip={y.clip} frame={frame} fps={fps} origin={origin} />
+      </AbsoluteFill>
+    </>
+  );
 }
 
 /** Relative frame when CTA + QR appear (must match `EndCard` animation). */
@@ -206,18 +482,21 @@ function GlobalBrandHeader({
   logoUrl,
   brandName,
   slogan,
-  relFrame,
+  globalFrame,
+  handoffOpacity = 1,
 }: {
   origin: string;
   logoUrl: string;
   brandName: string;
   slogan: string;
-  relFrame: number;
+  globalFrame: number;
+  handoffOpacity?: number;
 }) {
-  const headerOpacity = interpolate(relFrame, [0, 14], [0, 1], {
-    extrapolateLeft: "clamp",
-    extrapolateRight: "clamp",
-  });
+  const headerOpacity =
+    interpolate(globalFrame, [0, 14], [0, 1], {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+    }) * handoffOpacity;
   return (
     <AbsoluteFill
       style={{
@@ -253,25 +532,26 @@ function GlobalBrandHeader({
             display: "flex",
             flexDirection: "row",
             alignItems: "center",
-            gap: 22,
+            gap: 16,
             zIndex: 1,
           }}
         >
           <div
             style={{
-              width: 88,
-              height: 88,
+              width: 104,
+              height: 104,
               flexShrink: 0,
-              borderRadius: 16,
+              borderRadius: 18,
               background: "rgba(255,255,255,0.96)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               overflow: "hidden",
-              boxShadow: "0 8px 32px rgba(0,0,0,0.45)",
+              boxShadow:
+                "0 10px 40px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.08)",
             }}
           >
-            <div style={{ width: 76, height: 76 }}>
+            <div style={{ width: 90, height: 90 }}>
               <SafeBrandLogo
                 src={logoUrl}
                 origin={origin}
@@ -326,6 +606,10 @@ type EndCardProps = {
   relFrame: number;
   fps: number;
   brandPrimary: string;
+  endCtaText?: string;
+  endCtaBg1?: string;
+  endCtaBg2?: string;
+  endCtaTextColor?: string;
 };
 
 function EndCard({
@@ -340,12 +624,36 @@ function EndCard({
   relFrame,
   fps,
   brandPrimary,
+  endCtaText,
+  endCtaBg1,
+  endCtaBg2,
+  endCtaTextColor,
 }: EndCardProps) {
   const host = website.replace(/^https?:\/\//, "").replace(/\/$/, "");
   const headline =
     tagline.trim() ||
     (brandName.trim() ? `${brandName.trim()}.` : "Shop the drop.");
-  const ctaLabel = endOutroCtaLabel(brandName || "brand");
+  const withAlpha = (hex: string, alpha: string) => {
+    const h = hex.trim();
+    if (/^#[0-9a-f]{6}$/i.test(h) && /^[0-9a-f]{2}$/i.test(alpha.trim())) {
+      return `${h}${alpha.trim()}`;
+    }
+    return h;
+  };
+
+  const btnBg1 = (endCtaBg1?.trim() || brandPrimary).trim();
+  const btnBg2 =
+    (endCtaBg2?.trim() ||
+      (btnBg1.startsWith("#") && btnBg1.length === 7
+        ? `${btnBg1}dd`
+        : btnBg1)).trim();
+  const btnFg = (endCtaTextColor?.trim() || "#0a0a0a").trim();
+  const btnBg1Shadow55 = withAlpha(btnBg1, "55");
+
+  const ctaLabel = endCtaText?.trim()
+    ? endCtaText.trim()
+    : endOutroCtaLabel(brandName || "brand");
+
   const ctaStart = endOutroCtaStartFrames(fps);
   const cardInF = Math.max(8, Math.round(0.42 * fps));
   const logoDelay = Math.round(0.1 * fps);
@@ -516,9 +824,9 @@ function EndCard({
                     fontWeight: 900,
                     letterSpacing: "0.06em",
                     textTransform: "uppercase",
-                    color: "#0a0a0a",
-                    background: `linear-gradient(180deg, ${brandPrimary} 0%, ${brandPrimary}dd 100%)`,
-                    boxShadow: `0 0 0 1px rgba(255,255,255,0.2), 0 16px 48px ${brandPrimary}55, 0 8px 24px rgba(0,0,0,0.45)`,
+                    color: btnFg,
+                    background: `linear-gradient(180deg, ${btnBg1} 0%, ${btnBg2} 100%)`,
+                    boxShadow: `0 0 0 1px rgba(255,255,255,0.2), 0 16px 48px ${btnBg1Shadow55}, 0 8px 24px rgba(0,0,0,0.45)`,
                     whiteSpace: "nowrap",
                   }}
               >
@@ -566,6 +874,260 @@ function EndCard({
   );
 }
 
+/** Lower-third: animates once at t≈0; persists across scenes; fades for end card. */
+function PersistentBottomBanner({
+  globalFrame,
+  fps,
+  handoffOpacity,
+  showFocusCardOverlay,
+  brandName,
+  address,
+  website,
+  phone,
+  brandSecondary,
+  projectName,
+}: {
+  globalFrame: number;
+  fps: number;
+  handoffOpacity: number;
+  showFocusCardOverlay: boolean;
+  brandName: string;
+  address: string;
+  website: string;
+  phone: string;
+  brandSecondary: string;
+  projectName: string;
+}) {
+  const luxDetailFs = 20;
+  const luxPhoneFs = Math.round(luxDetailFs * 1.2);
+  const luxIconPx = 21;
+  const luxIconColor = "rgba(255,255,255,0.6)";
+
+  const bannerInStart = Math.round(0.08 * fps);
+  const bannerSlideBlurDur = Math.round(0.8 * fps);
+  const bannerOpacityIntro = interpolate(
+    globalFrame,
+    [bannerInStart, bannerInStart + bannerSlideBlurDur],
+    [0, 1],
+    INTERP_CLAMP,
+  );
+  const bannerY = interpolate(
+    globalFrame,
+    [bannerInStart, bannerInStart + bannerSlideBlurDur],
+    [20, 0],
+    INTERP_CLAMP,
+  );
+  const bannerBlurPx = interpolate(
+    globalFrame,
+    [bannerInStart, bannerInStart + bannerSlideBlurDur],
+    [10, 0],
+    INTERP_CLAMP,
+  );
+  const sublineOpacity = interpolate(
+    globalFrame,
+    [
+      bannerInStart + Math.round(0.45 * fps),
+      bannerInStart + bannerSlideBlurDur,
+    ],
+    [0, 0.75],
+    INTERP_CLAMP,
+  );
+
+  const bannerOpacity = bannerOpacityIntro * handoffOpacity;
+
+  return (
+    <AbsoluteFill
+      style={{
+        justifyContent: "flex-end",
+        alignItems: "stretch",
+        pointerEvents: "none",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "stretch",
+          width: "100%",
+          paddingBottom: "max(12px, 1.1%)",
+        }}
+      >
+        <div
+          style={{
+            opacity: bannerOpacity,
+            transform: `translateY(${bannerY}px)`,
+            filter: `blur(${bannerBlurPx}px)`,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "row",
+              alignItems: "flex-end",
+              justifyContent: "space-between",
+              gap: 24,
+              width: "100%",
+              boxSizing: "border-box",
+              paddingTop: "min(26vh, 260px)",
+              paddingRight: "3.5%",
+              paddingBottom: "max(14px, 1.2%)",
+              paddingLeft: "3.5%",
+              background: showFocusCardOverlay
+                ? "linear-gradient(180deg, rgba(0,0,0,0.52) 0%, rgba(0,0,0,0.42) 38%, rgba(0,0,0,0.2) 72%, rgba(0,0,0,0) 100%)"
+                : "transparent",
+              backdropFilter: showFocusCardOverlay ? "blur(64px)" : "none",
+              WebkitBackdropFilter: showFocusCardOverlay ? "blur(64px)" : "none",
+              borderTop: showFocusCardOverlay
+                ? "1px solid rgba(255,255,255,0.2)"
+                : "none",
+              boxShadow: showFocusCardOverlay
+                ? "inset 0 1px 0 rgba(255,255,255,0.12), 0 -52px 160px rgba(0,0,0,0.58), 0 -18px 64px rgba(0,0,0,0.4)"
+                : "none",
+            }}
+          >
+            <div
+              style={{
+                minWidth: 0,
+                flex: 1,
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "flex-end",
+              }}
+            >
+              <div
+                style={{
+                  color: "#fafafa",
+                  fontWeight: 800,
+                  fontSize: 28,
+                  letterSpacing: "-0.02em",
+                  lineHeight: 1.2,
+                  fontFamily: HEADLINE_FONT,
+                }}
+              >
+                {brandName}
+              </div>
+              {address ? (
+                <div
+                  style={{
+                    color: "rgba(250,250,250,0.78)",
+                    fontSize: luxDetailFs,
+                    fontFamily: LUX_DETAIL_FONT,
+                    fontWeight: 500,
+                    letterSpacing: "0.06em",
+                    marginTop: 12,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 11,
+                    lineHeight: 1.4,
+                  }}
+                >
+                  <span
+                    style={{
+                      color: luxIconColor,
+                      flexShrink: 0,
+                      display: "flex",
+                    }}
+                    aria-hidden
+                  >
+                    <MapPin size={luxIconPx} strokeWidth={1.5} />
+                  </span>
+                  <span>{address}</span>
+                </div>
+              ) : null}
+              {website ? (
+                <div
+                  style={{
+                    color: "rgba(250,250,250,0.74)",
+                    fontSize: luxDetailFs,
+                    fontFamily: LUX_DETAIL_FONT,
+                    fontWeight: 500,
+                    letterSpacing: "0.06em",
+                    marginTop: 8,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 11,
+                    lineHeight: 1.4,
+                  }}
+                >
+                  <span
+                    style={{
+                      color: luxIconColor,
+                      flexShrink: 0,
+                      display: "flex",
+                    }}
+                    aria-hidden
+                  >
+                    <Globe size={luxIconPx} strokeWidth={1.5} />
+                  </span>
+                  <span>{website.replace(/^https?:\/\//, "")}</span>
+                </div>
+              ) : null}
+            </div>
+
+            {phone ? (
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "flex-end",
+                  gap: 11,
+                  flexShrink: 0,
+                  maxWidth: "44%",
+                  alignSelf: "flex-end",
+                }}
+              >
+                <span
+                  style={{
+                    color: luxIconColor,
+                    flexShrink: 0,
+                    display: "flex",
+                  }}
+                  aria-hidden
+                >
+                  <Phone size={luxIconPx} strokeWidth={1.5} />
+                </span>
+                <div
+                  style={{
+                    color: "#fafafa",
+                    fontWeight: 900,
+                    fontSize: luxPhoneFs,
+                    fontFamily: LUX_DETAIL_FONT,
+                    letterSpacing: "0.04em",
+                    textShadow: "0 6px 28px rgba(0,0,0,0.55)",
+                    textAlign: "right",
+                    lineHeight: 1.15,
+                    wordBreak: "break-word",
+                  }}
+                >
+                  {phone}
+                </div>
+              </div>
+            ) : (
+              <div style={{ width: 8, flexShrink: 0 }} aria-hidden />
+            )}
+          </div>
+        </div>
+
+        <div
+          style={{
+            paddingTop: 4,
+            paddingBottom: "max(6px, 0.5%)",
+            textAlign: "center",
+            color: brandSecondary,
+            fontSize: 11,
+            letterSpacing: "0.14em",
+            textTransform: "uppercase",
+            opacity: sublineOpacity * handoffOpacity,
+          }}
+        >
+          {projectName}
+        </div>
+      </div>
+    </AbsoluteFill>
+  );
+}
+
 export function AdStudioComposition({
   origin,
   timeline,
@@ -584,11 +1146,6 @@ export function AdStudioComposition({
   const { fps, durationInFrames } = useVideoConfig();
   const t = frame / fps;
 
-  const visual = getVisualClipAtSecond(
-    t,
-    timeline.tracks,
-    timeline.clipsById,
-  );
   const textClip = getTextClipAtSecond(
     t,
     timeline.tracks,
@@ -606,9 +1163,16 @@ export function AdStudioComposition({
     projectName ||
     "Brand";
   const logoUrl = brandKit.logoUrl || metaString(metadata, "logoUrl");
+  const highProtectionWatermark =
+    metaBool(metadata, "highProtectionWatermark") &&
+    logoUrl.trim().length > 0;
   const endPhone =
     (brandKit.endScreenPhone && brandKit.endScreenPhone.trim()) || phone;
   const endTagline = brandKit.endScreenTagline || "";
+  const endCtaText = brandKit.endScreenCtaText || "";
+  const endCtaBg1 = brandKit.endScreenCtaBg1 || "";
+  const endCtaBg2 = brandKit.endScreenCtaBg2 || "";
+  const endCtaTextColor = brandKit.endScreenCtaTextColor || "#0a0a0a";
   const brandSlogan =
     (brandKit.tagline && brandKit.tagline.trim()) ||
     metaString(metadata, "tagline") ||
@@ -642,8 +1206,7 @@ export function AdStudioComposition({
         <Audio
           src={musicSrc}
           volume={musicVol}
-          startFrom={0}
-          endAt={durationInFrames}
+          trimAfter={durationInFrames}
         />
       ) : null}
       {voiceoverSrc && voiceVol > 0 ? (
@@ -652,33 +1215,97 @@ export function AdStudioComposition({
           src={voiceoverSrc}
           volume={voiceVol}
           playbackRate={voiceoverRate}
-          startFrom={0}
-          endAt={durationInFrames}
+          trimAfter={durationInFrames}
         />
       ) : null}
     </>
   );
 
-  if (visual && isEndVisual(visual)) {
-    const endClipStartF = Math.round(visual.startTime * fps);
-    const endRelFrame = Math.max(0, frame - endClipStartF);
-    const ctaChimeAt = endClipStartF + endOutroCtaStartFrames(fps);
+  const endStartSec = findEndSceneStartSec(timeline.tracks, timeline.clipsById);
+  const endStartF =
+    endStartSec !== null ? Math.round(endStartSec * fps) : durationInFrames + 1;
+  const onEndCard = frame >= endStartF && endStartSec !== null;
+  const endRelFrame = onEndCard ? frame - endStartF : 0;
+  const ctaChimeAt = endStartF + endOutroCtaStartFrames(fps);
 
-    return (
-      <AbsoluteFill
-        style={{
-          backgroundColor: "#0a0a0a",
-          fontFamily: HEADLINE_FONT,
-          overflow: "hidden",
-        }}
-      >
-        {audioLayer}
+  const nonEndClips = listNonEndVisualClips(timeline.tracks, timeline.clipsById);
+  const crossSec = 0.48;
+
+  const endHandoffOpacity = interpolate(
+    endRelFrame,
+    [0, Math.round(0.58 * fps)],
+    [1, 0],
+    INTERP_CLAMP,
+  );
+  const bannerHandoffFade = onEndCard ? endHandoffOpacity : 1;
+  const headerHandoffFade = bannerHandoffFade;
+
+  const textClipStartF = textClip ? Math.round(textClip.startTime * fps) : 0;
+  const textRelFrame = Math.max(0, frame - textClipStartF);
+  const captionText = headline.trim();
+  const captionOpacity = interpolate(
+    textRelFrame,
+    [4, 22],
+    [0, 1],
+    INTERP_CLAMP,
+  );
+  const endStartForScenes = endStartSec ?? Infinity;
+
+  return (
+    <AbsoluteFill
+      style={{
+        backgroundColor: "#0a0a0a",
+        fontFamily: HEADLINE_FONT,
+        overflow: "hidden",
+      }}
+    >
+      {audioLayer}
+      {onEndCard ? (
         <Sequence from={ctaChimeAt} layout="none">
           <Audio
             src={staticFile("media/sfx/cta-chime.mp3")}
             volume={0.38}
           />
         </Sequence>
+      ) : null}
+
+      {!onEndCard ? (
+        <AbsoluteFill>
+          <SceneCrossfadeStack
+            frame={frame}
+            fps={fps}
+            clips={nonEndClips}
+            origin={origin}
+            crossSec={crossSec}
+            endStartSec={endStartForScenes}
+          />
+          <AbsoluteFill
+            style={{
+              background:
+                "linear-gradient(180deg, rgba(6,6,8,0.06) 0%, rgba(6,6,8,0.12) 50%, rgba(6,6,8,0.22) 100%)",
+            }}
+          />
+          <AbsoluteFill
+            style={{
+              backgroundColor: brandPrimary,
+              opacity: 0.02,
+              pointerEvents: "none",
+            }}
+          />
+          <AbsoluteFill
+            style={{
+              pointerEvents: "none",
+              background:
+                "radial-gradient(ellipse 88% 78% at 50% 46%, rgba(0,0,0,0) 45%, rgba(0,0,0,0.08) 75%, rgba(0,0,0,0.22) 100%)",
+            }}
+          />
+          {highProtectionWatermark ? (
+            <BrandWatermarkTile origin={origin} logoUrl={logoUrl} />
+          ) : null}
+        </AbsoluteFill>
+      ) : null}
+
+      {onEndCard ? (
         <EndCard
           origin={origin}
           brandName={brandName}
@@ -691,169 +1318,23 @@ export function AdStudioComposition({
           relFrame={endRelFrame}
           fps={fps}
           brandPrimary={brandPrimary}
+          endCtaText={endCtaText}
+          endCtaBg1={endCtaBg1}
+          endCtaBg2={endCtaBg2}
+          endCtaTextColor={endCtaTextColor}
         />
-      </AbsoluteFill>
-    );
-  }
-
-  const bgSrc = absUrl(origin, visual?.assetUrl ?? null);
-
-  const clipStartF = visual ? Math.round(visual.startTime * fps) : 0;
-  const clipDurF = visual
-    ? Math.max(1, Math.round(visual.duration * fps))
-    : durationInFrames;
-  const relFrame = Math.max(0, frame - clipStartF);
-
-  const vtp = (visual?.transformProps ?? {}) as {
-    opacity?: number;
-    x?: number;
-    y?: number;
-    scaleX?: number;
-  };
-  const imgOpacityMul = vtp.opacity ?? 1;
-
-  const ken = interpolate(relFrame, [0, clipDurF], [1, 1.1], {
-    extrapolateLeft: "clamp",
-    extrapolateRight: "clamp",
-  });
-
-  const crossInF = Math.max(
-    10,
-    Math.min(Math.round(0.42 * fps), Math.max(4, Math.floor(clipDurF * 0.28))),
-  );
-  const crossOutF = Math.max(
-    10,
-    Math.min(Math.round(0.45 * fps), Math.max(4, Math.floor(clipDurF * 0.3))),
-  );
-
-  const fadeIn = interpolate(relFrame, [0, crossInF], [0, 1], {
-    extrapolateLeft: "clamp",
-    extrapolateRight: "clamp",
-  });
-  const fadeOut = interpolate(
-    relFrame,
-    [Math.max(0, clipDurF - crossOutF), clipDurF],
-    [1, 0],
-    { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
-  );
-  const sceneOpacity =
-    Math.min(fadeIn, fadeOut) *
-    (visual?.assetUrl ? 1 : 0.85) *
-    imgOpacityMul;
-
-  const panT =
-    clipDurF > 1 ? relFrame / Math.max(1, clipDurF - 1) : 1;
-  const panPath = visual
-    ? kenBurnsPan(visual)
-    : { x0: 0, y0: 0, x1: 0, y1: 0 };
-  const panX =
-    (vtp.x ?? 0) +
-    interpolate(panT, [0, 1], [panPath.x0, panPath.x1], {
-      extrapolateLeft: "clamp",
-      extrapolateRight: "clamp",
-    });
-  const panY =
-    (vtp.y ?? 0) +
-    interpolate(panT, [0, 1], [panPath.y0, panPath.y1], {
-      extrapolateLeft: "clamp",
-      extrapolateRight: "clamp",
-    });
-  const userScale = vtp.scaleX ?? 1;
-
-  const bannerInStart = Math.round(0.1 * fps);
-  const bannerInDur = Math.round(0.24 * fps);
-  const bannerOpacity = interpolate(
-    relFrame,
-    [bannerInStart, bannerInStart + bannerInDur],
-    [0, 1],
-    { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
-  );
-  const bannerY = interpolate(
-    relFrame,
-    [bannerInStart, bannerInStart + bannerInDur + 6],
-    [32, 0],
-    { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
-  );
-  const sublineOpacity = interpolate(
-    relFrame,
-    [bannerInStart + 8, bannerInStart + bannerInDur + 18],
-    [0, 0.75],
-    { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
-  );
-  const captionText = headline.trim();
-  const captionOpacity = interpolate(
-    relFrame,
-    [4, 22],
-    [0, 1],
-    { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
-  );
-
-  return (
-    <AbsoluteFill
-      style={{
-        backgroundColor: "#0a0a0a",
-        fontFamily: HEADLINE_FONT,
-        overflow: "hidden",
-      }}
-    >
-      {audioLayer}
-
-      <AbsoluteFill style={{ opacity: sceneOpacity }}>
-        {bgSrc ? (
-          <AbsoluteFill
-            style={{
-              transform: `scale(${ken * userScale}) translate(${panX}px, ${panY}px)`,
-              transformOrigin: "50% 40%",
-            }}
-          >
-            <SafeSceneImg
-              src={bgSrc}
-              style={{
-                width: "100%",
-                height: "100%",
-                objectFit: "cover",
-              }}
-            />
-          </AbsoluteFill>
-        ) : (
-          <AbsoluteFill
-            style={{
-              background:
-                "linear-gradient(165deg, #0c0c0e 0%, #1a1a1f 45%, #09090b 100%)",
-            }}
-          />
-        )}
-        <AbsoluteFill
-          style={{
-            background:
-              "linear-gradient(180deg, rgba(6,6,8,0.18) 0%, rgba(6,6,8,0.42) 50%, rgba(6,6,8,0.72) 100%)",
-          }}
-        />
-        <AbsoluteFill
-          style={{
-            backgroundColor: brandPrimary,
-            opacity: 0.05,
-            pointerEvents: "none",
-          }}
-        />
-        <AbsoluteFill
-          style={{
-            pointerEvents: "none",
-            background:
-              "radial-gradient(ellipse 88% 78% at 50% 46%, rgba(0,0,0,0) 40%, rgba(0,0,0,0.22) 72%, rgba(0,0,0,0.58) 100%)",
-          }}
-        />
-      </AbsoluteFill>
+      ) : null}
 
       <GlobalBrandHeader
         origin={origin}
         logoUrl={logoUrl}
         brandName={brandName}
         slogan={brandSlogan}
-        relFrame={relFrame}
+        globalFrame={frame}
+        handoffOpacity={headerHandoffFade}
       />
 
-      {captionText ? (
+      {!onEndCard && captionText ? (
         <AbsoluteFill
           style={{
             pointerEvents: "none",
@@ -866,9 +1347,7 @@ export function AdStudioComposition({
               position: "absolute",
               left: 0,
               right: 0,
-              bottom: showFocusCardOverlay
-                ? "calc(26vh + 14px)"
-                : "max(28px, 4vh)",
+              bottom: "calc(min(26vh, 260px) + 168px)",
               paddingLeft: "4%",
               paddingRight: "4%",
               textAlign: "center",
@@ -893,143 +1372,36 @@ export function AdStudioComposition({
         </AbsoluteFill>
       ) : null}
 
-      <AbsoluteFill
-        style={{
-          justifyContent: "flex-start",
-          alignItems: "flex-end",
-          paddingTop: 28,
-          paddingRight: 28,
-          pointerEvents: "none",
-        }}
-      >
-        <QrCorner
-          value={qrData}
-          visible={showQrOverlay}
-          brandPrimary={brandPrimary}
-        />
-      </AbsoluteFill>
-
-      {showFocusCardOverlay ? (
+      {!onEndCard ? (
         <AbsoluteFill
           style={{
-            justifyContent: "flex-end",
-            alignItems: "stretch",
+            justifyContent: "flex-start",
+            alignItems: "flex-end",
+            paddingTop: 28,
+            paddingRight: 28,
             pointerEvents: "none",
           }}
         >
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "stretch",
-              width: "100%",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 24,
-                minHeight: "26vh",
-                width: "100%",
-                boxSizing: "border-box",
-                padding: "22px 3.5% 26px",
-                background: "rgba(0,0,0,0.6)",
-                backdropFilter: "blur(28px)",
-                WebkitBackdropFilter: "blur(28px)",
-                borderTop: "1px solid rgba(255,255,255,0.1)",
-                boxShadow: "0 -24px 80px rgba(0,0,0,0.35)",
-                opacity: bannerOpacity,
-                transform: `translateY(${bannerY}px)`,
-              }}
-            >
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div
-                  style={{
-                    color: "#fafafa",
-                    fontWeight: 800,
-                    fontSize: 27,
-                    letterSpacing: "-0.02em",
-                    lineHeight: 1.2,
-                  }}
-                >
-                  {brandName}
-                </div>
-                {address ? (
-                  <div
-                    style={{
-                      color: "rgba(250,250,250,0.78)",
-                      fontSize: 17,
-                      marginTop: 12,
-                      display: "flex",
-                      alignItems: "flex-start",
-                      gap: 8,
-                      lineHeight: 1.35,
-                    }}
-                  >
-                    <span style={{ opacity: 0.85 }} aria-hidden>
-                      📍
-                    </span>
-                    <span>{address}</span>
-                  </div>
-                ) : null}
-                {website ? (
-                  <div
-                    style={{
-                      color: "rgba(250,250,250,0.74)",
-                      fontSize: 17,
-                      marginTop: 8,
-                    }}
-                  >
-                    🔗 {website.replace(/^https?:\/\//, "")}
-                  </div>
-                ) : null}
-              </div>
-
-              {phone ? (
-                <div
-                  style={{
-                    color: "#fafafa",
-                    fontWeight: 800,
-                    fontSize: Math.min(
-                      63,
-                      36 + (phone.length < 15 ? 16 : 6),
-                    ),
-                    letterSpacing: "-0.03em",
-                    textShadow: "0 6px 28px rgba(0,0,0,0.55)",
-                    flexShrink: 0,
-                    maxWidth: "44%",
-                    textAlign: "right",
-                    lineHeight: 1.05,
-                    wordBreak: "break-word",
-                  }}
-                >
-                  {phone}
-                </div>
-              ) : (
-                <div style={{ width: 8, flexShrink: 0 }} aria-hidden />
-              )}
-            </div>
-
-            <div
-              style={{
-                paddingTop: 12,
-                paddingBottom: 12,
-                textAlign: "center",
-                color: brandSecondary,
-                fontSize: 11,
-                letterSpacing: "0.14em",
-                textTransform: "uppercase",
-                opacity: sublineOpacity,
-              }}
-            >
-              {projectName}
-            </div>
-          </div>
+          <QrCorner
+            value={qrData}
+            visible={showQrOverlay}
+            brandPrimary={brandPrimary}
+          />
         </AbsoluteFill>
       ) : null}
+
+      <PersistentBottomBanner
+        globalFrame={frame}
+        fps={fps}
+        handoffOpacity={bannerHandoffFade}
+        showFocusCardOverlay={showFocusCardOverlay}
+        brandName={brandName}
+        address={address}
+        website={website}
+        phone={phone}
+        brandSecondary={brandSecondary}
+        projectName={projectName}
+      />
     </AbsoluteFill>
   );
 }

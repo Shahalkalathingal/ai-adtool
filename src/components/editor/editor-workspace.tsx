@@ -2,7 +2,8 @@
 
 import type { PlayerRef } from "@remotion/player";
 import { Clapperboard, Pause, Play } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { ExportStudioModal } from "@/components/editor/export-studio-modal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EditorRemotionPlayer } from "@/components/editor/editor-remotion-player";
@@ -11,6 +12,7 @@ import { MultiTrackTimeline } from "@/components/editor/multi-track-timeline";
 import { StudioShell } from "@/components/editor/studio-shell";
 import { framesToSeconds } from "@/lib/types/timeline";
 import { useTimelineStore } from "@/lib/stores/timeline-store";
+import { cn } from "@/lib/utils";
 
 type EditorWorkspaceProps = {
   projectId: string;
@@ -32,6 +34,7 @@ function isEditableTarget(t: EventTarget | null): boolean {
 
 export function EditorWorkspace({ projectId }: EditorWorkspaceProps) {
   const playerRef = useRef<PlayerRef>(null);
+  const [exportOpen, setExportOpen] = useState(false);
   const isPlaying = useTimelineStore((s) => s.isPlaying);
   const setIsPlaying = useTimelineStore((s) => s.setIsPlaying);
   const togglePlayback = useTimelineStore((s) => s.togglePlayback);
@@ -116,12 +119,30 @@ export function EditorWorkspace({ projectId }: EditorWorkspaceProps) {
               </h1>
             </div>
           </div>
-          <Badge
-            variant="outline"
-            className="border-border/80 bg-card/40 font-mono text-[10px] backdrop-blur-sm"
-          >
-            {headerBadgeLabel}
-          </Badge>
+          <div className="flex shrink-0 items-center gap-3">
+            <Badge
+              variant="outline"
+              className="border-border/80 bg-card/40 font-mono text-[10px] backdrop-blur-sm"
+            >
+              {headerBadgeLabel}
+            </Badge>
+            {directorPlanApplied ? (
+              <Button
+                type="button"
+                size="sm"
+                className={cn(
+                  "export-save-shimmer relative h-9 shrink-0 border border-white/[0.14] px-4 text-xs font-semibold tracking-tight text-white",
+                  "bg-gradient-to-b from-[oklch(0.58_0.14_264)] via-[oklch(0.51_0.15_262)] to-[oklch(0.43_0.14_260)]",
+                  "shadow-[0_0_22px_rgba(59,130,246,0.4),0_4px_18px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.16)]",
+                  "transition-[transform,filter,box-shadow] hover:scale-[1.02] hover:brightness-[1.05]",
+                  "hover:shadow-[0_0_30px_rgba(96,165,250,0.48),0_6px_22px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.2)]",
+                )}
+                onClick={() => setExportOpen(true)}
+              >
+                Save &amp; Continue
+              </Button>
+            ) : null}
+          </div>
         </header>
 
         <div className="flex min-h-0 flex-1">
@@ -209,6 +230,11 @@ export function EditorWorkspace({ projectId }: EditorWorkspaceProps) {
             </aside>
           ) : null}
         </div>
+
+        <ExportStudioModal
+          open={exportOpen}
+          onClose={() => setExportOpen(false)}
+        />
       </div>
     </>
   );

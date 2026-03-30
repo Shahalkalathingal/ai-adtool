@@ -120,6 +120,46 @@
   --sidebar-ring: oklch(0.56 0.03 285);
 }
 
+/** Save & continue — shimmer sweep every ~3s */
+@keyframes export-save-shimmer {
+  0% {
+    transform: translateX(-120%) skewX(-14deg);
+    opacity: 0;
+  }
+  8% {
+    opacity: 0.65;
+  }
+  22% {
+    transform: translateX(220%) skewX(-14deg);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(220%) skewX(-14deg);
+    opacity: 0;
+  }
+}
+
+@layer utilities {
+  .export-save-shimmer {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .export-save-shimmer::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      105deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.22) 45%,
+      transparent 78%
+    );
+    animation: export-save-shimmer 3s ease-in-out infinite;
+    pointer-events: none;
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -127,5 +167,40 @@
   body {
     @apply bg-background text-foreground antialiased;
     font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  }
+}
+
+/**
+ * Studio side panel: minimal “overlay” scrollbar — thin, theme-aware, no heavy track.
+ */
+@layer utilities {
+  .studio-scrollbar {
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklch, var(--foreground) 22%, transparent)
+      transparent;
+  }
+
+  .studio-scrollbar::-webkit-scrollbar {
+    width: 5px;
+  }
+
+  .studio-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .studio-scrollbar::-webkit-scrollbar-thumb {
+    border-radius: 9999px;
+    border: 1.5px solid transparent;
+    background-clip: padding-box;
+    background-color: color-mix(in oklch, var(--foreground) 20%, transparent);
+  }
+
+  .studio-scrollbar:hover::-webkit-scrollbar-thumb {
+    background-color: color-mix(in oklch, var(--foreground) 34%, transparent);
+  }
+
+  .studio-scrollbar::-webkit-scrollbar-thumb:active {
+    background-color: color-mix(in oklch, var(--foreground) 42%, transparent);
   }
 }

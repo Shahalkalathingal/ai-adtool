@@ -18,7 +18,6 @@ import { StudioMusicTab } from "@/components/editor/studio-music-tab";
 import { StudioQrPanel } from "@/components/editor/studio-qr-panel";
 import { StudioVoiceTab } from "@/components/editor/studio-voice-tab";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import type { StudioPanelId } from "@/lib/types/studio-panel";
 import { useTimelineStore } from "@/lib/stores/timeline-store";
 import { cn } from "@/lib/utils";
@@ -48,7 +47,7 @@ export function StudioShell({ projectId }: StudioShellProps) {
   const navItems = directorPlanApplied ? NAV : NAV.filter((n) => n.id === "slideshow");
 
   return (
-    <div className="flex h-full min-h-0 w-full bg-sidebar/20">
+    <div className="flex h-full min-h-0 min-w-0 w-full bg-sidebar/20">
       <nav
         className="flex w-[50px] shrink-0 flex-col items-stretch gap-0.5 border-r border-border/60 bg-zinc-950/90 py-2 pl-1 pr-1"
         aria-label="Studio sections"
@@ -85,8 +84,12 @@ export function StudioShell({ projectId }: StudioShellProps) {
         })}
       </nav>
 
-      <ScrollArea className="h-full min-h-0 min-w-0 flex-1">
-        <div className="min-w-0 space-y-4 p-3 pb-10">
+      <div
+        className="studio-scrollbar min-h-0 min-w-0 flex-1 basis-0 overflow-y-auto overflow-x-hidden overscroll-y-contain"
+        role="region"
+        aria-label="Studio panel"
+      >
+        <div className="min-w-0 space-y-4 p-3 pb-14">
           {studioPanel === "slideshow" && (
             <>
               <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
@@ -117,7 +120,7 @@ export function StudioShell({ projectId }: StudioShellProps) {
             </>
           )}
         </div>
-      </ScrollArea>
+      </div>
     </div>
   );
 }

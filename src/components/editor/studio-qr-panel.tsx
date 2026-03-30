@@ -24,7 +24,6 @@ export function StudioQrPanel() {
     (typeof meta.websiteUrl === "string" ? meta.websiteUrl : "");
 
   const show = meta.showQrOverlay !== false;
-  const showFocusCard = meta.showFocusCardOverlay !== false;
 
   return (
     <Card className="border-border/60 bg-card/40 shadow-none">
@@ -56,29 +55,6 @@ export function StudioQrPanel() {
               updateProject({ metadata: { showQrOverlay: e.target.checked } });
             }}
             aria-label="Show QR overlay in preview"
-          />
-        </label>
-
-        <label className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-border/70 bg-background/30 px-3 py-2.5">
-          <div className="min-w-0">
-            <Label className="text-[11px] font-medium text-foreground">
-              Card overlay
-            </Label>
-            <p className="text-[10px] text-muted-foreground">
-              Bottom focus card with address and phone. Off leaves only the top
-              brand strip.
-            </p>
-          </div>
-          <input
-            type="checkbox"
-            className="size-4 shrink-0 accent-primary"
-            checked={showFocusCard}
-            onChange={(e) => {
-              updateProject({
-                metadata: { showFocusCardOverlay: e.target.checked },
-              });
-            }}
-            aria-label="Show bottom focus card in preview"
           />
         </label>
 

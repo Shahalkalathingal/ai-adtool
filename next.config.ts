@@ -9,8 +9,16 @@ const nextConfig: NextConfig = {
   ...(process.env.NEXT_DIST_DIR?.trim()
     ? { distDir: process.env.NEXT_DIST_DIR.trim() }
     : {}),
-  transpilePackages: ["remotion", "@remotion/player"],
-  serverExternalPackages: ["ws"],
+  transpilePackages: ["remotion", "@remotion/player", "@remotion/media"],
+  serverExternalPackages: [
+    "ws",
+    "@remotion/cli",
+    "@remotion/vercel",
+    "@vercel/blob",
+    "@vercel/functions",
+    "@vercel/sandbox",
+    "esbuild",
+  ],
 };
 
 export default nextConfig;
