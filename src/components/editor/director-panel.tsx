@@ -25,6 +25,7 @@ import { RefinerChat } from "@/components/editor/refiner-chat";
 import { useTimelineStore } from "@/lib/stores/timeline-store";
 import { listSceneVisualClips } from "@/lib/timeline/scene-utils";
 import { framesToSeconds } from "@/lib/types/timeline";
+import { playSuccessChime } from "@/lib/ui/sfx";
 
 export function DirectorPanel() {
   const params = useParams();
@@ -66,12 +67,15 @@ export function DirectorPanel() {
     );
   }, [directorPlanApplied, playheadT, regularScenes]);
 
-  const STEPS = useMemo(
+  const PIPELINE_STEPS = useMemo(
     () => [
-      "🔍 Scraping Brand Assets...",
-      "🧠 Gemini Analyzing Content...",
-      "🎬 Structuring Scenes & Scripts...",
-      "✨ Finalizing Studio Timeline...",
+      "🔍 Scraping brand surfaces & catalog imagery...",
+      "🔍 Searching contact layers for location data...",
+      "📍 Verifying business credentials...",
+      "📱 Indexing primary contact channels...",
+      "🧠 Gemini director — story & pacing...",
+      "🎬 Structuring scenes & voiceover...",
+      "✨ Finalizing studio timeline...",
     ],
     [],
   );
@@ -80,15 +84,17 @@ export function DirectorPanel() {
     setPending(true);
     setStepIndex(0);
     setProgressPct(4);
-    const t1 = window.setTimeout(() => setStepIndex(1), 700);
-    const t2 = window.setTimeout(() => setStepIndex(2), 1500);
-    const t3 = window.setTimeout(() => setStepIndex(3), 2200);
     const ticker = window.setInterval(() => {
       setProgressPct((p) => {
         const cap = 95;
         return p >= cap ? p : p + 1;
       });
     }, 120);
+    const stepAdvance = window.setInterval(() => {
+      setStepIndex((i) =>
+        Math.min(i + 1, Math.max(0, PIPELINE_STEPS.length - 2)),
+      );
+    }, 1100);
     try {
       const result = await generateDirectorPlanFromUrl(url);
       if (!result.ok) {
@@ -100,16 +106,15 @@ export function DirectorPanel() {
         contactHints: result.contactHints,
         pageIntel: result.pageIntel,
       });
-      setStepIndex(3);
+      setStepIndex(PIPELINE_STEPS.length - 1);
       setProgressPct(100);
       toast.success("Timeline generated", {
         description: `${result.plan.scenes.length} scenes · ${Math.round(result.plan.totalDurationSec)}s`,
       });
+      playSuccessChime();
     } finally {
-      window.clearTimeout(t1);
-      window.clearTimeout(t2);
-      window.clearTimeout(t3);
       window.clearInterval(ticker);
+      window.clearInterval(stepAdvance);
       setPending(false);
     }
   }
@@ -143,7 +148,7 @@ export function DirectorPanel() {
               Director generation
             </CardTitle>
             <CardDescription className="text-xs leading-relaxed">
-              Building the studio timeline in 4 phases.
+              Deep-scrape, contact mining, director pass, and timeline assembly.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -173,7 +178,7 @@ export function DirectorPanel() {
                 />
               </div>
               <div className="mt-3 space-y-2">
-                {STEPS.map((label, i) => {
+                {PIPELINE_STEPS.map((label, i) => {
                   const done = i < stepIndex;
                   const active = i === stepIndex;
                   return (

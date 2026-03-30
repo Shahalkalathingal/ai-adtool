@@ -3,15 +3,14 @@
 import {
   Film,
   Loader2,
-  Lock,
   Mic2,
   Music2,
   PanelBottom,
   QrCode,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { toast } from "sonner";
-import { generateVoiceoverFromTimelineJson } from "@/app/actions/voiceover-actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
@@ -21,6 +20,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { generateVoiceoverFromTimelineJson } from "@/app/actions/voiceover-actions";
 import { ClipMediaType } from "@/generated/prisma/enums";
 import { serializeTimelineState } from "@/lib/timeline/serialize";
 import {
@@ -31,6 +31,7 @@ import {
 } from "@/lib/timeline/scene-utils";
 import { framesToSeconds } from "@/lib/types/timeline";
 import { useTimelineStore } from "@/lib/stores/timeline-store";
+import { playSuccessChime } from "@/lib/ui/sfx";
 import { cn } from "@/lib/utils";
 
 const laneAccent: Record<string, string> = {
@@ -112,8 +113,6 @@ function laneIcon(lane: string) {
   }
 }
 
-type DragMode = "move" | "resize-left" | "resize-right";
-
 type TimelineClipProps = {
   clipId: string;
   totalSec: number;
@@ -139,69 +138,7 @@ function TimelineClipBar({ clipId, totalSec, lane, projectId }: TimelineClipProp
   const selectClipWithStudioTab = useTimelineStore(
     (s) => s.selectClipWithStudioTab,
   );
-  const setClipTiming = useTimelineStore((s) => s.setClipTiming);
   const selectedClipId = useTimelineStore((s) => s.selectedClipId);
-
-  const dragRef = useRef<{
-    mode: DragMode;
-    startClientX: number;
-    origStart: number;
-    origDur: number;
-    widthPx: number;
-  } | null>(null);
-
-  const onPointerMove = useCallback(
-    (e: PointerEvent) => {
-      const d = dragRef.current;
-      if (!d) return;
-      if (!useTimelineStore.getState().clipsById[clipId]) return;
-      const dx = e.clientX - d.startClientX;
-      const deltaSec = (dx / d.widthPx) * totalSec;
-
-      if (d.mode === "move") {
-        setClipTiming(clipId, { startTime: d.origStart + deltaSec });
-      } else if (d.mode === "resize-right") {
-        setClipTiming(clipId, { duration: d.origDur + deltaSec });
-      } else if (d.mode === "resize-left") {
-        const nextStart = d.origStart + deltaSec;
-        const nextDur = d.origDur - deltaSec;
-        setClipTiming(clipId, { startTime: nextStart, duration: nextDur });
-      }
-    },
-    [clipId, setClipTiming, totalSec],
-  );
-
-  const endDrag = useCallback(() => {
-    dragRef.current = null;
-    window.removeEventListener("pointermove", onPointerMove);
-    window.removeEventListener("pointerup", endDrag);
-  }, [onPointerMove]);
-
-  const startDrag = (
-    e: React.PointerEvent,
-    mode: DragMode,
-    widthPx: number,
-  ) => {
-    if (!useTimelineStore.getState().clipsById[clipId]) return;
-    e.stopPropagation();
-    e.preventDefault();
-    dragRef.current = {
-      mode,
-      startClientX: e.clientX,
-      origStart: clip.startTime,
-      origDur: clip.duration,
-      widthPx: Math.max(1, widthPx),
-    };
-    window.addEventListener("pointermove", onPointerMove);
-    window.addEventListener("pointerup", endDrag);
-  };
-
-  useEffect(() => {
-    return () => {
-      window.removeEventListener("pointermove", onPointerMove);
-      window.removeEventListener("pointerup", endDrag);
-    };
-  }, [endDrag, onPointerMove]);
 
   if (!clip) return null;
 
@@ -228,58 +165,29 @@ function TimelineClipBar({ clipId, totalSec, lane, projectId }: TimelineClipProp
             left: `calc(${left}% + 1px)`,
             width: `calc(${Math.max(width, 1.1)}% - 2px)`,
           }}
-          onPointerDown={(e) => {
-            if (
-              (e.target as HTMLElement).closest("[data-resize-handle]")
-            ) {
-              return;
-            }
-            selectClipWithStudioTab(clipId);
-            const row = (e.currentTarget as HTMLElement).parentElement;
-            const w = row?.getBoundingClientRect().width ?? 1;
-            startDrag(e, "move", w);
-          }}
+          onPointerDown={() => selectClipWithStudioTab(clipId)}
         >
-          <button
-            type="button"
-            data-resize-handle="left"
-            aria-label="Trim start"
-            className="relative z-10 w-2 shrink-0 cursor-ew-resize rounded-l-[inherit] border-r border-border/60 bg-muted/40 hover:bg-muted/70"
-            onPointerDown={(e) => {
-              selectClipWithStudioTab(clipId);
-              const row = (e.currentTarget as HTMLElement).closest(
-                ".timeline-row-area",
-              );
-              const w = row?.getBoundingClientRect().width ?? 1;
-              startDrag(e, "resize-left", w);
-            }}
-          />
           <div className="relative flex min-w-0 flex-1 items-center gap-1 px-1 py-0.5">
             <ClipThumb clip={clip} lane={lane} />
-            {isVoice && (
-              <div
-                className="pointer-events-none absolute inset-y-1 left-1 overflow-hidden rounded-sm bg-amber-500/15"
-                style={{ width: `calc(${fillRatio * 100}% - 4px)` }}
-              />
-            )}
+            {isVoice ? (
+              <>
+                <div
+                  className="pointer-events-none absolute inset-y-1 left-1 overflow-hidden rounded-sm bg-amber-500/15"
+                  style={{ width: `calc(${fillRatio * 100}% - 4px)` }}
+                />
+                <div
+                  className="pointer-events-none absolute inset-y-1 left-1 right-1 rounded-sm opacity-45"
+                  style={{
+                    backgroundImage:
+                      "repeating-linear-gradient(90deg, rgba(251,191,36,0.55) 0px, rgba(251,191,36,0.55) 2px, transparent 2px, transparent 6px)",
+                  }}
+                />
+              </>
+            ) : null}
             <span className="relative line-clamp-2 text-[10px] font-medium leading-tight text-foreground/95">
               {clip.label ?? clip.mediaType}
             </span>
           </div>
-          <button
-            type="button"
-            data-resize-handle="right"
-            aria-label="Trim end"
-            className="relative z-10 w-2 shrink-0 cursor-ew-resize rounded-r-[inherit] border-l border-border/60 bg-muted/40 hover:bg-muted/70"
-            onPointerDown={(e) => {
-              selectClipWithStudioTab(clipId);
-              const row = (e.currentTarget as HTMLElement).closest(
-                ".timeline-row-area",
-              );
-              const w = row?.getBoundingClientRect().width ?? 1;
-              startDrag(e, "resize-right", w);
-            }}
-          />
         </div>
       </TooltipTrigger>
       <TooltipContent
@@ -317,53 +225,7 @@ function SceneStripBar({ visualClipId, totalSec, projectId }: SceneStripBarProps
   const selectClipWithStudioTab = useTimelineStore(
     (s) => s.selectClipWithStudioTab,
   );
-  const moveSceneGroupByVisualClipId = useTimelineStore(
-    (s) => s.moveSceneGroupByVisualClipId,
-  );
   const selectedClipId = useTimelineStore((s) => s.selectedClipId);
-
-  const dragRef = useRef<{
-    startClientX: number;
-    origStart: number;
-    widthPx: number;
-  } | null>(null);
-
-  const onPointerMove = useCallback(
-    (e: PointerEvent) => {
-      const d = dragRef.current;
-      if (!d || !clip || isEndSceneClip(clip)) return;
-      const dx = e.clientX - d.startClientX;
-      const deltaSec = (dx / d.widthPx) * totalSec;
-      moveSceneGroupByVisualClipId(clip.id, d.origStart + deltaSec);
-    },
-    [clip, moveSceneGroupByVisualClipId, totalSec],
-  );
-
-  const endDrag = useCallback(() => {
-    dragRef.current = null;
-    window.removeEventListener("pointermove", onPointerMove);
-    window.removeEventListener("pointerup", endDrag);
-  }, [onPointerMove]);
-
-  const startDrag = (e: React.PointerEvent, widthPx: number) => {
-    if (!clip || isEndSceneClip(clip)) return;
-    e.stopPropagation();
-    e.preventDefault();
-    dragRef.current = {
-      startClientX: e.clientX,
-      origStart: clip.startTime,
-      widthPx: Math.max(1, widthPx),
-    };
-    window.addEventListener("pointermove", onPointerMove);
-    window.addEventListener("pointerup", endDrag);
-  };
-
-  useEffect(() => {
-    return () => {
-      window.removeEventListener("pointermove", onPointerMove);
-      window.removeEventListener("pointerup", endDrag);
-    };
-  }, [endDrag, onPointerMove]);
 
   if (!clip) return null;
 
@@ -387,34 +249,19 @@ function SceneStripBar({ visualClipId, totalSec, projectId }: SceneStripBarProps
             "border-border/90 bg-background/55 shadow-sm backdrop-blur-md",
             "ring-1 ring-white/5 transition-colors",
             selected && "ring-2 ring-primary/80",
-            isEnd && "cursor-default border-amber-500/35 bg-amber-950/15",
-            !isEnd && "cursor-grab active:cursor-grabbing",
+            isEnd && "border-amber-500/35 bg-amber-950/15",
             "overflow-hidden",
           )}
           style={{
             left: `calc(${left}% + 1px)`,
             width: `calc(${Math.max(width, 0.8)}% - 2px)`,
           }}
-          onPointerDown={(e) => {
-            if ((e.target as HTMLElement).closest("[data-no-drag]")) return;
+          onPointerDown={() => {
             selectClipWithStudioTab(clip.id);
-            if (isEnd) return;
-            const row = (e.currentTarget as HTMLElement).parentElement;
-            const w = row?.getBoundingClientRect().width ?? 1;
-            startDrag(e, w);
           }}
         >
           <div className="relative flex min-w-0 flex-1 items-center gap-1 px-1.5 py-0.5">
-            {isEnd ? (
-              <div
-                data-no-drag
-                className="flex size-7 shrink-0 items-center justify-center rounded-sm border border-amber-500/40 bg-amber-500/10"
-              >
-                <Lock className="size-3.5 text-amber-200/90" />
-              </div>
-            ) : (
-              <ClipThumb clip={clip} lane="visual" />
-            )}
+            <ClipThumb clip={clip} lane="visual" />
             <span className="relative line-clamp-2 text-[10px] font-medium leading-tight text-foreground/95">
               {isEnd ? "End screen" : (clip.label ?? "Scene")}
             </span>
@@ -428,7 +275,6 @@ function SceneStripBar({ visualClipId, totalSec, projectId }: SceneStripBarProps
         <p className="font-semibold">{clip.label}</p>
         <p className="text-muted-foreground">
           {clip.startTime.toFixed(2)}s · {clip.duration.toFixed(2)}s
-          {isEnd ? " · locked outro" : ""}
         </p>
         {projectId ? (
           <p className="mt-1 font-mono text-[10px] text-muted-foreground/90">
@@ -450,13 +296,86 @@ export function MultiTrackTimeline({ projectId }: MultiTrackTimelineProps) {
   const playheadFrame = useTimelineStore((s) => s.playheadFrame);
   const setPlayheadFrame = useTimelineStore((s) => s.setPlayheadFrame);
   const setIsPlaying = useTimelineStore((s) => s.setIsPlaying);
-  const addSceneAtEnd = useTimelineStore((s) => s.addSceneAtEnd);
   const setStudioPanel = useTimelineStore((s) => s.setStudioPanel);
   const project = useTimelineStore((s) => s.project);
+  const setVoiceoverAsset = useTimelineStore((s) => s.setVoiceoverAsset);
   const [voBusy, setVoBusy] = useState(false);
+  const [voiceLaneFlash, setVoiceLaneFlash] = useState(false);
+  const [musicLaneFlash, setMusicLaneFlash] = useState(false);
+  const [statusIndex, setStatusIndex] = useState(0);
 
   const totalSec = framesToSeconds(durationInFrames, fps);
   const playheadSec = framesToSeconds(playheadFrame, fps);
+  const masterScript =
+    typeof project.metadata.masterVoiceoverScript === "string"
+      ? project.metadata.masterVoiceoverScript
+      : "";
+  const words = masterScript.trim().split(/\s+/).filter(Boolean).length;
+  const minWords = 75;
+  const hasVoiceoverAudio =
+    typeof project.metadata.voiceoverAudioUrl === "string" &&
+    project.metadata.voiceoverAudioUrl.trim().length > 0;
+  const brandPrimary =
+    (typeof project.brandConfig.primaryColor === "string" &&
+      project.brandConfig.primaryColor) ||
+    "#f43f5e";
+  const statuses = useMemo(
+    () => [
+      "🎙️ Synthesizing Natural Inflections...",
+      "🧠 Aligning Script to Scene Pacing...",
+      "✨ Polishing Audio Clarity...",
+    ],
+    [],
+  );
+  const voiceoverFlashAt =
+    typeof project.metadata.voiceoverFlashAt === "number"
+      ? project.metadata.voiceoverFlashAt
+      : 0;
+  const musicFlashAt =
+    typeof project.metadata.musicFlashAt === "number"
+      ? project.metadata.musicFlashAt
+      : 0;
+
+  useEffect(() => {
+    if (!voBusy) return;
+    const id = window.setInterval(() => {
+      setStatusIndex((i) => (i + 1) % statuses.length);
+    }, 1500);
+    return () => window.clearInterval(id);
+  }, [voBusy, statuses.length]);
+
+  useEffect(() => {
+    if (!voiceoverFlashAt) return;
+    setVoiceLaneFlash(true);
+    const id = window.setTimeout(() => setVoiceLaneFlash(false), 900);
+    return () => window.clearTimeout(id);
+  }, [voiceoverFlashAt]);
+
+  useEffect(() => {
+    if (!musicFlashAt) return;
+    setMusicLaneFlash(true);
+    const id = window.setTimeout(() => setMusicLaneFlash(false), 700);
+    return () => window.clearTimeout(id);
+  }, [musicFlashAt]);
+
+  async function onGenerateFullVoiceover() {
+    setVoBusy(true);
+    setStatusIndex(0);
+    try {
+      const state = useTimelineStore.getState();
+      const json = JSON.stringify(serializeTimelineState(state));
+      const res = await generateVoiceoverFromTimelineJson(projectId, json);
+      if (!res.ok) {
+        toast.error("Voiceover failed", { description: res.error });
+        return;
+      }
+      setVoiceoverAsset(res.publicUrl, res.durationSecEstimate);
+      toast.success("Full voiceover generated");
+      playSuccessChime();
+    } finally {
+      setVoBusy(false);
+    }
+  }
 
   const sorted = [...tracks].sort((a, b) => a.index - b.index);
   const regularScenes = useMemo(
@@ -483,47 +402,8 @@ export function MultiTrackTimeline({ projectId }: MultiTrackTimelineProps) {
     [sorted],
   );
 
-  const hasVoiceLane = sorted.some(
-    (t) =>
-      (typeof t.metadata?.lane === "string" && t.metadata.lane === "voice") ||
-      t.name?.toLowerCase().includes("voice"),
-  );
-  const hasVoiceoverAudio = useMemo(() => {
-    const meta = project.metadata as Record<string, unknown>;
-    const fromMeta =
-      typeof meta.voiceoverAudioUrl === "string" && meta.voiceoverAudioUrl.trim().length > 0;
-    if (fromMeta) return true;
-    return Object.values(clipsById).some(
-      (c) =>
-        c.mediaType === ClipMediaType.VOICEOVER &&
-        typeof c.assetUrl === "string" &&
-        c.assetUrl.trim().length > 0,
-    );
-  }, [project.metadata, clipsById]);
-
-  const setVoiceoverAsset = useTimelineStore((s) => s.setVoiceoverAsset);
-
-  async function onGenerateVoice() {
-    setVoBusy(true);
-    try {
-      const state = useTimelineStore.getState();
-      const json = JSON.stringify(serializeTimelineState(state));
-      const res = await generateVoiceoverFromTimelineJson(projectId, json);
-      if (!res.ok) {
-        toast.error("Voiceover failed", { description: res.error });
-        return;
-      }
-      setVoiceoverAsset(res.publicUrl, res.durationSecEstimate);
-      toast.success("Voiceover synthesized", {
-        description: "Saved to public/media.",
-      });
-    } finally {
-      setVoBusy(false);
-    }
-  }
-
   return (
-    <div className="space-y-3">
+    <div className="relative space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
@@ -532,23 +412,21 @@ export function MultiTrackTimeline({ projectId }: MultiTrackTimelineProps) {
           <Badge variant="secondary" className="font-mono text-[10px]">
             {totalSec.toFixed(1)}s · {fps} fps
           </Badge>
-          {hasVoiceLane ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-8 gap-1.5 border-border/80 bg-background/40 text-[11px] backdrop-blur-sm"
-              disabled={voBusy}
-              onClick={() => void onGenerateVoice()}
-            >
-              {voBusy ? (
-                <Loader2 className="size-3.5 animate-spin" />
-              ) : (
-                <Mic2 className="size-3.5" />
-              )}
-              {hasVoiceoverAudio ? "Update current voiceover" : "Generate voiceover"}
-            </Button>
-          ) : null}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1.5 border-border/80 bg-background/40 text-[11px] backdrop-blur-sm"
+            disabled={voBusy || words < minWords}
+            onClick={() => void onGenerateFullVoiceover()}
+          >
+            {voBusy ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <Mic2 className="size-3.5" />
+            )}
+            {hasVoiceoverAudio ? "Update Full Voiceover" : "Generate Full Voiceover"}
+          </Button>
         </div>
       </div>
 
@@ -576,19 +454,6 @@ export function MultiTrackTimeline({ projectId }: MultiTrackTimelineProps) {
                   projectId={projectId}
                 />
               ))}
-              {endSceneVis ? (
-                <button
-                  type="button"
-                  aria-label="Add scene"
-                  onClick={() => addSceneAtEnd()}
-                  className="pointer-events-auto absolute top-1/2 z-30 -translate-y-1/2 rounded-lg border border-border/70 bg-background/40 px-2 py-1 text-[18px] font-bold text-foreground/90 shadow-sm backdrop-blur-md hover:bg-background/60 hover:text-foreground"
-                  style={{
-                    left: `calc(${totalSec > 0 ? (endSceneVis.startTime / totalSec) * 100 : 0}% - 14px)`,
-                  }}
-                >
-                  +
-                </button>
-              ) : null}
               <div
                 className="pointer-events-none absolute top-0 bottom-0 z-20 w-[2px] bg-rose-500/90 shadow-[0_0_18px_rgba(244,63,94,0.75)]"
                 style={{
@@ -661,14 +526,48 @@ export function MultiTrackTimeline({ projectId }: MultiTrackTimelineProps) {
             const Icon = laneIcon(lane);
             const accent = laneAccent[lane] ?? "border-l-primary/60";
 
+            const isAnimatedLane = lane === "voice" || lane === "music";
+            const RowComp = isAnimatedLane ? motion.div : "div";
             return (
-              <div
+              <RowComp
                 key={track.id}
                 className={cn(
                   "flex border-b border-border/60 bg-muted/10",
                   "border-l-2",
                   accent,
+                  lane === "voice" &&
+                    voiceLaneFlash &&
+                    "shadow-[0_0_0_1px_rgba(251,191,36,0.55),0_0_20px_rgba(251,191,36,0.35)]",
+                  lane === "music" &&
+                    musicLaneFlash &&
+                    "shadow-[0_0_0_1px_rgba(16,185,129,0.5),0_0_18px_rgba(16,185,129,0.28)]",
                 )}
+                {...(isAnimatedLane
+                  ? {
+                      initial: false,
+                      animate:
+                        lane === "voice" && voiceLaneFlash
+                          ? {
+                              scale: [1, 1.01, 1],
+                              backgroundColor: [
+                                "rgba(245,158,11,0.04)",
+                                "rgba(245,158,11,0.14)",
+                                "rgba(245,158,11,0.04)",
+                              ],
+                            }
+                          : lane === "music" && musicLaneFlash
+                            ? {
+                                scale: [1, 1.008, 1],
+                                backgroundColor: [
+                                  "rgba(16,185,129,0.04)",
+                                  "rgba(16,185,129,0.12)",
+                                  "rgba(16,185,129,0.04)",
+                                ],
+                              }
+                            : { scale: 1 },
+                      transition: { duration: 0.45, ease: "easeOut" },
+                    }
+                  : {})}
               >
                 <div className="flex w-36 shrink-0 items-center gap-2 border-r border-border/60 bg-sidebar/35 px-2 py-2 backdrop-blur-sm">
                   <Icon className="size-3.5 text-muted-foreground" />
@@ -693,7 +592,7 @@ export function MultiTrackTimeline({ projectId }: MultiTrackTimelineProps) {
                     }}
                   />
                 </div>
-              </div>
+              </RowComp>
             );
           })}
 
@@ -718,6 +617,47 @@ export function MultiTrackTimeline({ projectId }: MultiTrackTimelineProps) {
           }}
         />
       </div>
+      <AnimatePresence>
+        {voBusy ? (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-4 rounded-xl bg-background/20 backdrop-blur-md"
+          >
+            <div className="flex items-end gap-1.5">
+              {[0, 1, 2, 3, 4, 5, 6].map((i) => (
+                <motion.span
+                  key={i}
+                  className="w-1.5 rounded-full"
+                  style={{
+                    backgroundColor: brandPrimary,
+                    boxShadow: `0 0 10px ${brandPrimary}`,
+                  }}
+                  animate={{
+                    height: [10, 26 + (i % 3) * 6, 14],
+                    opacity: [0.45, 1, 0.55],
+                  }}
+                  transition={{
+                    duration: 0.9 + i * 0.08,
+                    repeat: Infinity,
+                    ease: "easeInOut",
+                  }}
+                />
+              ))}
+            </div>
+            <motion.p
+              key={statusIndex}
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              className="text-center text-xs font-medium text-foreground/90"
+            >
+              {statuses[statusIndex]}
+            </motion.p>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </div>
   );
 }

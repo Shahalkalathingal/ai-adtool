@@ -74,18 +74,8 @@ export const EditorRemotionPlayer = forwardRef<PlayerRef, object>(
       (typeof bc.website === "string" && bc.website) ||
       (typeof meta.website === "string" ? meta.website : "") ||
       (typeof meta.websiteUrl === "string" ? meta.websiteUrl : "");
-    const targetSec =
-      typeof meta.targetDurationSec === "number"
-        ? meta.targetDurationSec
-        : durationInFrames / Math.max(1, fps);
-    const voEstimateSec =
-      typeof meta.voiceoverEstimateSec === "number"
-        ? meta.voiceoverEstimateSec
-        : null;
-    const voiceoverRate =
-      voEstimateSec && voEstimateSec > 0 && targetSec > 0
-        ? Math.min(1.8, Math.max(0.55, voEstimateSec / targetSec))
-        : 1;
+    const voiceoverSrc = resolveVoiceoverSrc(origin, meta);
+    const voiceoverRate = 1;
 
     const inputProps = useMemo(
       () => ({
@@ -96,6 +86,7 @@ export const EditorRemotionPlayer = forwardRef<PlayerRef, object>(
         brandPrimary: bc.primaryColor,
         brandSecondary: bc.secondaryColor,
         showQrOverlay: meta.showQrOverlay !== false,
+        showFocusCardOverlay: meta.showFocusCardOverlay !== false,
         qrValue: website.trim() || String(meta.websiteUrl ?? ""),
         brandKit: {
           companyName:
@@ -109,8 +100,9 @@ export const EditorRemotionPlayer = forwardRef<PlayerRef, object>(
             typeof bc.endScreenTagline === "string" ? bc.endScreenTagline : "",
           endScreenPhone:
             typeof bc.endScreenPhone === "string" ? bc.endScreenPhone : "",
+          tagline: typeof bc.tagline === "string" ? bc.tagline : "",
         },
-        voiceoverSrc: resolveVoiceoverSrc(origin, meta),
+        voiceoverSrc,
         voiceoverRate,
       }),
       [
@@ -127,7 +119,9 @@ export const EditorRemotionPlayer = forwardRef<PlayerRef, object>(
         bc.logoUrl,
         bc.endScreenTagline,
         bc.endScreenPhone,
+        bc.tagline,
         website,
+        voiceoverSrc,
         voiceoverRate,
       ],
     );

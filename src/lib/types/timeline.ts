@@ -28,6 +28,8 @@ export type BrandKitState = {
   endScreenTagline?: string;
   /** Outro card: large phone (falls back to `phone` when empty). */
   endScreenPhone?: string;
+  /** Brand slogan / tagline (header + trust layer). */
+  tagline?: string;
 };
 
 export type ProjectTimelineMeta = {

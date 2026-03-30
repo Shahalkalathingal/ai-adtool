@@ -16,6 +16,15 @@ function uid(prefix: string): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 11)}`;
 }
 
+/** Weight by spoken words so scene length tracks master VO “beats”. */
+function voiceoverSpeechWeight(vo: string): number {
+  const n = vo
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean).length;
+  return Math.max(4, n);
+}
+
 function sortTracks(tracks: TrackTimelineState[]): TrackTimelineState[] {
   return [...tracks].sort((a, b) => a.index - b.index);
 }
@@ -40,14 +49,9 @@ export function buildTimelineFromDirectorPlan(
     pageIntel?: ScrapedPageIntel;
   },
 ): BuiltDirectorTimeline {
-  const END_SCENE_SEC = 4;
-  const bodyDuration = plan.totalDurationSec;
-  const totalDuration = bodyDuration + END_SCENE_SEC;
+  const totalDuration = plan.totalDurationSec;
   const durationInFrames = secondsToFrames(totalDuration, fps);
-
-  const endDurFrames = secondsToFrames(END_SCENE_SEC, fps);
-  const endDurSec = framesToSeconds(endDurFrames, fps);
-  const bodyFramesTarget = Math.max(0, durationInFrames - endDurFrames);
+  const totalFramesTarget = Math.max(1, durationInFrames);
   const totalDurationSecSnapped = framesToSeconds(durationInFrames, fps);
 
   const visualTrackId = uid("tr");
@@ -65,16 +69,32 @@ export function buildTimelineFromDirectorPlan(
   );
   const sb = plan.scrapedBrand;
 
+  const masterVoiceover = plan.scenes
+    .map((s) => (typeof s.voiceover === "string" ? s.voiceover.trim() : ""))
+    .filter(Boolean)
+    .join(" ");
+
+  const speechWeights = plan.scenes.map((s) =>
+    voiceoverSpeechWeight(
+      typeof s.voiceover === "string" ? s.voiceover : "",
+    ),
+  );
+
   let cursorFrames = 0;
   for (const [i, scene] of plan.scenes.entries()) {
-    let durFrames = secondsToFrames(scene.durationSec, fps);
     const isLastScene = i === plan.scenes.length - 1;
+    let durFrames: number;
     if (isLastScene) {
-      // Ensure body scenes end exactly on the last frame before the outro.
-      durFrames = Math.max(1, bodyFramesTarget - cursorFrames);
+      durFrames = Math.max(1, totalFramesTarget - cursorFrames);
     } else {
-      const remaining = bodyFramesTarget - cursorFrames;
-      durFrames = Math.max(1, Math.min(durFrames, remaining));
+      const remainingFrames = totalFramesTarget - cursorFrames;
+      const remainingWeight = speechWeights
+        .slice(i)
+        .reduce((a, b) => a + b, 0);
+      const share = speechWeights[i] / remainingWeight;
+      durFrames = Math.max(1, Math.round(remainingFrames * share));
+      const minTail = plan.scenes.length - i - 1;
+      durFrames = Math.min(durFrames, Math.max(1, remainingFrames - minTail));
     }
     const startTime = framesToSeconds(cursorFrames, fps);
     const dur = framesToSeconds(durFrames, fps);
@@ -100,6 +120,7 @@ export function buildTimelineFromDirectorPlan(
       clipProperties: {
         visualTreatment: scene.visualTreatment,
         sceneIndex: scene.index,
+        ...(isLastScene ? { isEndScene: true } : {}),
       },
       content: {
         sceneIndex: scene.index,
@@ -109,7 +130,7 @@ export function buildTimelineFromDirectorPlan(
       audioProps: null,
       animationIn: { preset: "fade", durationSec: 0.35 },
       animationOut: null,
-      metadata: {},
+      metadata: isLastScene ? { isEndScene: true } : {},
     };
 
     const tId = uid("cl");
@@ -123,7 +144,11 @@ export function buildTimelineFromDirectorPlan(
       assetUrl: null,
       label: scene.headline,
       transformProps: { opacity: 1 },
-      clipProperties: { role: "headline", sceneIndex: scene.index },
+      clipProperties: {
+        role: isLastScene ? "end" : "headline",
+        sceneIndex: scene.index,
+        ...(isLastScene ? { isEndScene: true } : {}),
+      },
       content: {
         sceneIndex: scene.index,
         text: scene.headline,
@@ -132,87 +157,29 @@ export function buildTimelineFromDirectorPlan(
       audioProps: null,
       animationIn: { preset: "slide", direction: "up", durationSec: 0.4 },
       animationOut: null,
-      metadata: {},
-    };
-
-    const voId = uid("cl");
-    voiceClipIds.push(voId);
-    clipsById[voId] = {
-      id: voId,
-      trackId: voiceTrackId,
-      startTime,
-      duration: dur,
-      mediaType: ClipMediaType.VOICEOVER,
-      assetUrl: null,
-      label: `VO · ${scene.title}`,
-      transformProps: {},
-      clipProperties: { sceneIndex: scene.index },
-      content: { script: scene.voiceover },
-      audioProps: { gainDb: 0, duckUnderMusicDb: -12 },
-      animationIn: null,
-      animationOut: null,
-      metadata: {},
+      metadata: isLastScene ? { isEndScene: true } : {},
     };
 
     cursorFrames += durFrames;
   }
 
-  const endSceneIndex = plan.scenes.length;
-  const endStart = framesToSeconds(cursorFrames, fps);
-  const vEnd = uid("cl");
-  const tEnd = uid("cl");
-  const voEnd = uid("cl");
-  visualClipIds.push(vEnd);
-  textClipIds.push(tEnd);
-  voiceClipIds.push(voEnd);
-
-  clipsById[vEnd] = {
-    id: vEnd,
-    trackId: visualTrackId,
-    startTime: endStart,
-    duration: endDurSec,
-    mediaType: ClipMediaType.VIDEO,
-    assetUrl: null,
-    label: "End screen",
-    transformProps: { opacity: 1, scaleX: 1, scaleY: 1 },
-    clipProperties: { sceneIndex: endSceneIndex, isEndScene: true },
-    content: { sceneIndex: endSceneIndex, headline: "" },
-    audioProps: null,
-    animationIn: null,
-    animationOut: null,
-    metadata: { isEndScene: true },
-  };
-  clipsById[tEnd] = {
-    id: tEnd,
-    trackId: textTrackId,
-    startTime: endStart,
-    duration: endDurSec,
-    mediaType: ClipMediaType.TEXT,
-    assetUrl: null,
-    label: "End screen",
-    transformProps: { opacity: 1 },
-    clipProperties: { role: "end", sceneIndex: endSceneIndex },
-    content: { sceneIndex: endSceneIndex, text: "" },
-    audioProps: null,
-    animationIn: null,
-    animationOut: null,
-    metadata: { isEndScene: true },
-  };
-  clipsById[voEnd] = {
-    id: voEnd,
+  const voiceClipId = uid("cl");
+  voiceClipIds.push(voiceClipId);
+  clipsById[voiceClipId] = {
+    id: voiceClipId,
     trackId: voiceTrackId,
-    startTime: endStart,
-    duration: endDurSec,
+    startTime: 0,
+    duration: totalDurationSecSnapped,
     mediaType: ClipMediaType.VOICEOVER,
     assetUrl: null,
-    label: "VO · End",
+    label: "Master voiceover",
     transformProps: {},
-    clipProperties: { sceneIndex: endSceneIndex },
-    content: { sceneIndex: endSceneIndex, script: "" },
-    audioProps: { gainDb: 0, duckUnderMusicDb: -12 },
+    clipProperties: { mode: "masterScript" },
+    content: { script: masterVoiceover },
+      audioProps: { volumePct: 100, duckUnderMusicDb: -12 },
     animationIn: null,
     animationOut: null,
-    metadata: { isEndScene: true },
+    metadata: { mode: "masterScript" },
   };
 
   const musicClipId = uid("cl");
@@ -227,7 +194,7 @@ export function buildTimelineFromDirectorPlan(
     transformProps: {},
     clipProperties: { mood: plan.musicMood },
     content: { mood: plan.musicMood },
-    audioProps: { gainDb: -8 },
+    audioProps: { volumePct: 62 },
     animationIn: null,
     animationOut: null,
     metadata: {},
@@ -297,12 +264,14 @@ export function buildTimelineFromDirectorPlan(
     metadata: {
       targetDurationSec: totalDurationSecSnapped,
       aspectRatio: "16:9",
-      sceneCount: plan.scenes.length + 1,
+      sceneCount: plan.scenes.length,
       showQrOverlay: true,
+      showFocusCardOverlay: true,
       musicMood: plan.musicMood,
       directorModel: "gemini-2.0-flash",
       sourceUrl: options?.sourceUrl,
       previewSubtitle: `${plan.scenes.length} scenes · ${plan.musicMood}`,
+      masterVoiceoverScript: masterVoiceover,
       brandDisplayName: company,
       phone,
       address,

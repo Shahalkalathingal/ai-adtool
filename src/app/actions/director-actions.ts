@@ -6,6 +6,10 @@ import type {
   ScrapedPageIntel,
 } from "@/lib/services/firecrawl-scrape";
 import { scrapeMarketingPage } from "@/lib/services/firecrawl-scrape";
+import {
+  enrichPageIntelCandidatesWithSerp,
+  finalizeDirectorPlanImages,
+} from "@/lib/services/director-image-enrichment";
 import type { DirectorPlan } from "@/lib/types/director-plan";
 
 export type DirectorActionResult =
@@ -40,17 +44,27 @@ export async function generateDirectorPlanFromUrl(
 
   try {
     const scraped = await scrapeMarketingPage(trimmed);
-    const plan = await runGeminiDirector({
+    const expandedCandidates = await enrichPageIntelCandidatesWithSerp(
+      scraped.pageIntel.productImageCandidates,
+      scraped.pageIntel.companyName,
+      scraped.title,
+    );
+    const pageIntel = {
+      ...scraped.pageIntel,
+      productImageCandidates: expandedCandidates,
+    };
+    const planRaw = await runGeminiDirector({
       url: trimmed,
       markdown: scraped.markdown,
       title: scraped.title,
-      pageIntel: scraped.pageIntel,
+      pageIntel,
     });
+    const plan: DirectorPlan = await finalizeDirectorPlanImages(planRaw);
     return {
       ok: true,
       plan,
       contactHints: scraped.contact,
-      pageIntel: scraped.pageIntel,
+      pageIntel,
     };
   } catch (e) {
     const message = e instanceof Error ? e.message : "Unknown error";

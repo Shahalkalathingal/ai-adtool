@@ -60,6 +60,24 @@ export function getMusicClipAtSecond(
   return null;
 }
 
+export function getVoiceoverClipAtSecond(
+  t: number,
+  tracks: RemotionTrackInput[],
+  clipsById: Record<string, RemotionClipInput>,
+): RemotionClipInput | null {
+  const ordered = [...tracks].sort((a, b) => a.index - b.index);
+  for (const tr of ordered) {
+    if (laneOf(tr) !== "voice") continue;
+    for (const cid of tr.clipIds) {
+      const c = clipsById[cid];
+      if (!c) continue;
+      if (c.mediaType !== "VOICEOVER") continue;
+      if (t >= c.startTime && t < c.startTime + c.duration) return c;
+    }
+  }
+  return null;
+}
+
 export function getTextClipAtSecond(
   t: number,
   tracks: RemotionTrackInput[],

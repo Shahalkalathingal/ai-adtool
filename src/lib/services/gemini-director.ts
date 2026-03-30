@@ -58,12 +58,16 @@ RULES:
 Goal: design a 16:9 (landscape) video ad of at least 30 seconds total, with confident pacing.
 
 Strict rules:
-- totalDurationSec between 32 and 45 (inclusive).
-- 6 to 8 scenes; sum of durationSec MUST equal totalDurationSec within 0.1s.
+- totalDurationSec must be 35.
+- exactly 7 scenes; each scene durationSec must be 5.
+- scene index 6 (the LAST scene) is the end screen CTA scene, with ad-style direct response copy (e.g. urgency + visit domain + act now).
+- last scene headline and voiceover must include a strong call-to-action that references the brand domain when available.
+- voiceover for EACH scene must be exactly ONE sentence (no line breaks, no paragraph), designed to fit ~5 seconds at normal speech speed.
+- keep it punchy and high-CTR friendly; include the brand domain in the last scene CTA sentence when available.
 - 16:9 framing — headlines are lower-third safe; visuals are product/lifestyle.
 - scrapedBrand must contain ONLY these fields when known from hints (no markdown, no random URLs in address):
   companyName, cleanAddress (one line street/city/state/zip), phoneNumber (formatted), logoUrl (https image), primaryDomain (hostname only, no path).
-- productImageUrls: MUST include 8 to 10 DISTINCT https URLs of real product/lifestyle images. Prefer URLs listed in "Image URL candidates". Do NOT invent domains; only use URLs that appear in hints or markdown, or the same host as the source URL. If fewer than 8 exist, repeat the best URLs to reach 8 (still list 8–10 strings).
+- productImageUrls: MUST include 8 to 10 DISTINCT https URLs of real product/lifestyle images. Prefer URLs listed in "Image URL candidates" (these may include supplemental Google Image results merged by the server — treat every listed https image URL as usable). When a candidate clearly matches the brand or scene, prefer it over inventing URLs. Do NOT invent random-looking domains; prefer given candidates, then the source URL host. If fewer than 8 distinct URLs exist in hints, repeat the best URLs to reach 8 (still list 8–10 strings).
 - Each scene may set imageUrl to pin a specific still, or omit to cycle productImageUrls by scene index.
 
 JSON shape (strict field names):

@@ -1,6 +1,7 @@
 "use client";
 
 import { Music2 } from "lucide-react";
+import { useMemo } from "react";
 import {
   Card,
   CardContent,
@@ -9,6 +10,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { Slider } from "@/components/ui/slider";
 import {
   Select,
   SelectContent,
@@ -17,9 +19,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { MUSIC_PRESETS } from "@/lib/audio/music-presets";
+import { musicVolumePctFromAudioProps } from "@/lib/audio/volume-pct";
 import { getTrackByLane } from "@/lib/timeline/scene-utils";
 import { useTimelineStore } from "@/lib/stores/timeline-store";
 import { ClipMediaType } from "@/generated/prisma/enums";
+import { playSuccessChime } from "@/lib/ui/sfx";
 
 export function StudioMusicTab() {
   const tracks = useTimelineStore((s) => s.tracks);
@@ -40,6 +44,15 @@ export function StudioMusicTab() {
       const c = clipsById[id];
       return c?.mediaType === ClipMediaType.MUSIC;
     }) ?? null;
+  const selectedPreset = useMemo(
+    () => MUSIC_PRESETS.find((p) => p.id === selected),
+    [selected],
+  );
+  const musicPct = musicClipId
+    ? musicVolumePctFromAudioProps(
+        clipsById[musicClipId]?.audioProps as Record<string, unknown> | null,
+      )
+    : 0;
 
   return (
     <Card className="border-border/60 bg-card/40 shadow-none">
@@ -62,11 +75,17 @@ export function StudioMusicTab() {
             onValueChange={(id) => {
               const preset = MUSIC_PRESETS.find((p) => p.id === id);
               if (!preset || !musicClipId) return;
-              updateProject({ metadata: { selectedMusicPresetId: id } });
+              updateProject({
+                metadata: { selectedMusicPresetId: id, musicFlashAt: Date.now() },
+              });
               updateClipProperty(musicClipId, {
                 assetUrl: preset.url,
                 label: `Music · ${preset.label}`,
+                audioProps: {
+                  volumePct: preset.defaultVolumePct ?? 60,
+                },
               });
+              playSuccessChime();
             }}
           >
             <SelectTrigger className="border-border/80 bg-background/40 text-sm backdrop-blur-sm">
@@ -80,6 +99,38 @@ export function StudioMusicTab() {
               ))}
             </SelectContent>
           </Select>
+        </div>
+        <div className="space-y-2 rounded-md border border-border/70 bg-background/35 p-2.5">
+          <div className="flex items-center justify-between">
+            <p className="text-[11px] font-medium text-foreground/90">Music volume</p>
+            <Label className="text-[10px] text-muted-foreground">{musicPct}%</Label>
+          </div>
+          <Slider
+            min={0}
+            max={100}
+            step={1}
+            value={[musicPct]}
+            disabled={!musicClipId || selected === "none"}
+            onValueChange={(v) => {
+              if (!musicClipId) return;
+              const val = Math.max(0, Math.min(100, v[0] ?? 0));
+              updateClipProperty(musicClipId, {
+                audioProps: { volumePct: val },
+              });
+    }}
+          />
+          <p className="text-[10px] text-muted-foreground">
+            {selected === "none"
+              ? "Muted — choose a track to adjust level."
+              : "0% = muted · 100% = maximum bed level in the mix."}
+          </p>
+          {selectedPreset?.url ? (
+            <p className="text-[10px] text-muted-foreground">
+              Track active in main timeline preview.
+            </p>
+          ) : (
+            <p className="text-[10px] text-muted-foreground">Silent mode selected.</p>
+          )}
         </div>
         {!musicClipId ? (
           <p className="text-[11px] text-amber-200/80">

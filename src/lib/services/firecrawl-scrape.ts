@@ -46,7 +46,7 @@ function normalizeUrl(u: string): string {
   return u.replace(/[),."'"]+$/, "").trim();
 }
 
-function isLikelyProductImage(url: string): boolean {
+export function isLikelyProductImage(url: string): boolean {
   const lower = url.toLowerCase();
   if (SKIP_SUBSTR.some((s) => lower.includes(s))) return false;
   if (lower.endsWith(".svg")) return false;
@@ -191,8 +191,92 @@ function buildPageIntel(
   };
 }
 
+const CONTACT_PATHS = [
+  "/contact",
+  "/contact-us",
+  "/about",
+  "/about-us",
+  "/location",
+  "/locations",
+  "/visit",
+  "/stores",
+  "/store-locator",
+];
+
+function stripTrailingSlash(u: string): string {
+  return u.replace(/\/+$/, "") || "/";
+}
+
+async function firecrawlFetchMarkdown(
+  targetUrl: string,
+  apiKey: string,
+): Promise<{
+  markdown: string;
+  title?: string;
+  metadata?: Record<string, unknown>;
+} | null> {
+  const res = await fetch("https://api.firecrawl.dev/v1/scrape", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      url: targetUrl,
+      formats: ["markdown"],
+    }),
+    cache: "no-store",
+  });
+
+  const raw = await res.text();
+  let json: Record<string, unknown>;
+  try {
+    json = JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+
+  if (!res.ok || json.success !== true) return null;
+
+  const data = json.data as Record<string, unknown> | undefined;
+  const markdown =
+    (typeof data?.markdown === "string" ? data.markdown : null) ??
+    (typeof json.markdown === "string" ? json.markdown : "") ??
+    "";
+
+  const metadata = (data?.metadata ?? json.metadata) as
+    | Record<string, unknown>
+    | undefined;
+  const title =
+    typeof metadata?.title === "string" ? metadata.title : undefined;
+
+  return {
+    markdown: markdown.trim(),
+    title,
+    metadata,
+  };
+}
+
+function assertPrimaryScrapeOk(
+  res: Response,
+  json: Record<string, unknown>,
+  raw: string,
+): void {
+  if (!res.ok) {
+    throw new Error(
+      `Firecrawl scrape failed (${res.status}): ${typeof json.message === "string" ? json.message : raw.slice(0, 300)}`,
+    );
+  }
+  if (json.success !== true) {
+    throw new Error(
+      `Firecrawl reported failure: ${typeof json.error === "string" ? json.error : JSON.stringify(json)}`,
+    );
+  }
+}
+
 /**
  * Deep scrape a marketing URL via Firecrawl (markdown for Gemini Director).
+ * Crawls common contact/about paths when phone or address is missing.
  * @see https://docs.firecrawl.dev/api-reference/v1-endpoint/scrape
  */
 export async function scrapeMarketingPage(
@@ -213,6 +297,7 @@ export async function scrapeMarketingPage(
       url,
       formats: ["markdown"],
     }),
+    cache: "no-store",
   });
 
   const raw = await res.text();
@@ -223,18 +308,7 @@ export async function scrapeMarketingPage(
     throw new Error(`Firecrawl returned non-JSON (${res.status}): ${raw.slice(0, 200)}`);
   }
 
-  if (!res.ok) {
-    throw new Error(
-      `Firecrawl scrape failed (${res.status}): ${typeof json.message === "string" ? json.message : raw.slice(0, 300)}`,
-    );
-  }
-
-  const success = json.success === true;
-  if (!success) {
-    throw new Error(
-      `Firecrawl reported failure: ${typeof json.error === "string" ? json.error : JSON.stringify(json)}`,
-    );
-  }
+  assertPrimaryScrapeOk(res, json, raw);
 
   const data = json.data as Record<string, unknown> | undefined;
   const markdown =
@@ -252,11 +326,53 @@ export async function scrapeMarketingPage(
       ? metadata.description
       : undefined;
 
-  const md = markdown.trim() || "(empty page)";
-  const contact = extractContactHints(md);
-  const pageIntel = buildPageIntel(md, url, metadata);
-  if (title && !pageIntel.companyName) {
-    pageIntel.companyName = title.split(/[|\-–]/)[0]?.trim();
+  let aggregated = markdown.trim() || "(empty page)";
+
+  const recompute = () => {
+    const contact = extractContactHints(aggregated);
+    const pageIntel = buildPageIntel(aggregated, url, metadata);
+    if (title && !pageIntel.companyName) {
+      pageIntel.companyName = title.split(/[|\-–]/)[0]?.trim();
+    }
+    return { contact, pageIntel };
+  };
+
+  let { contact, pageIntel } = recompute();
+  const missingPhone = !pageIntel.phoneNumber && !contact.phone;
+  const missingAddress = !pageIntel.cleanAddress && !contact.address;
+
+  if (missingPhone || missingAddress) {
+    let origin: URL;
+    try {
+      origin = new URL(url);
+    } catch {
+      origin = new URL("https://invalid.local/");
+    }
+    const home = stripTrailingSlash(`${origin.origin}${origin.pathname || "/"}`);
+
+    for (const path of CONTACT_PATHS) {
+      const subUrl = stripTrailingSlash(
+        new URL(path, `${origin.protocol}//${origin.host}`).href,
+      );
+      if (subUrl === home) continue;
+
+      const sub = await firecrawlFetchMarkdown(subUrl, key);
+      if (!sub?.markdown?.trim()) continue;
+
+      aggregated += `\n\n---\n\n## ${path}\n\n${sub.markdown}`;
+      ({ contact, pageIntel } = recompute());
+
+      const stillPhone = !pageIntel.phoneNumber && !contact.phone;
+      const stillAddr = !pageIntel.cleanAddress && !contact.address;
+      if (!stillPhone && !stillAddr) break;
+    }
+  }
+
+  const md = aggregated.trim() || "(empty page)";
+  const finalContact = extractContactHints(md);
+  const finalIntel = buildPageIntel(md, url, metadata);
+  if (title && !finalIntel.companyName) {
+    finalIntel.companyName = title.split(/[|\-–]/)[0]?.trim();
   }
 
   return {
@@ -264,7 +380,7 @@ export async function scrapeMarketingPage(
     title,
     description,
     sourceUrl: url,
-    contact,
-    pageIntel,
+    contact: finalContact,
+    pageIntel: finalIntel,
   };
 }

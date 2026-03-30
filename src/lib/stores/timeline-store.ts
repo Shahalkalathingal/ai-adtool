@@ -121,6 +121,83 @@ function relayoutEndScreen(state: TimelineState) {
   recomputeTimelineDuration(state);
 }
 
+function fitScenesToDuration(state: TimelineState, targetSec: number) {
+  const visualTrack = getTrackByLane(state.tracks, "visual");
+  if (!visualTrack || targetSec <= 0) return;
+  const visuals = visualTrack.clipIds
+    .map((id) => state.clipsById[id])
+    .filter(Boolean)
+    .sort((a, b) => a.startTime - b.startTime);
+  if (visuals.length === 0) return;
+
+  const oldTotal = visuals.reduce((sum, v) => sum + Math.max(0.01, v.duration), 0);
+  if (oldTotal <= 0) return;
+  const scale = targetSec / oldTotal;
+  let cursorFrames = 0;
+
+  visuals.forEach((vis, idx) => {
+    const si = vis.content?.sceneIndex;
+    if (typeof si !== "number") return;
+    const startSec = framesToSeconds(cursorFrames, state.fps);
+    const rawDur = vis.duration * scale;
+    const durFrames =
+      idx === visuals.length - 1
+        ? Math.max(1, secondsToFrames(targetSec, state.fps) - cursorFrames)
+        : Math.max(1, secondsToFrames(rawDur, state.fps));
+    const durSec = framesToSeconds(durFrames, state.fps);
+    const grouped = findClipsForSceneIndex(state.tracks, state.clipsById, si, [
+      "visual",
+      "text",
+    ]);
+    for (const c of Object.values(grouped)) {
+      c.startTime = startSec;
+      c.duration = durSec;
+    }
+    cursorFrames += durFrames;
+  });
+
+  const voiceTrack = getTrackByLane(state.tracks, "voice");
+  if (voiceTrack) {
+    const voiceClip = voiceTrack.clipIds
+      .map((id) => state.clipsById[id])
+      .find((c) => c?.mediaType === ClipMediaType.VOICEOVER);
+    if (voiceClip) {
+      voiceClip.startTime = 0;
+      voiceClip.duration = targetSec;
+    }
+  }
+  recomputeTimelineDuration(state);
+}
+
+function ensureSingleVoiceClip(state: TimelineState) {
+  const voiceTrack = getTrackByLane(state.tracks, "voice");
+  if (!voiceTrack || voiceTrack.clipIds.length <= 1) return;
+  const existing = voiceTrack.clipIds
+    .map((id) => state.clipsById[id])
+    .filter((c): c is ClipTimelineState => Boolean(c));
+  if (existing.length === 0) return;
+
+  const primary = existing[0];
+  const mergedScript = existing
+    .map((c) =>
+      c.content && typeof c.content.script === "string" ? c.content.script.trim() : "",
+    )
+    .filter(Boolean)
+    .join(" ");
+
+  primary.startTime = 0;
+  primary.duration = framesToSeconds(state.durationInFrames, state.fps);
+  primary.label = "Master voiceover";
+  primary.clipProperties = { ...(primary.clipProperties ?? {}), mode: "masterScript" };
+  primary.content = { ...(primary.content ?? {}), script: mergedScript };
+  primary.metadata = { ...(primary.metadata ?? {}), mode: "masterScript" };
+
+  for (const c of existing.slice(1)) {
+    delete state.clipsById[c.id];
+  }
+  voiceTrack.clipIds = [primary.id];
+}
+
 const HERO_SEC = 26;
 const END_SCENE_SEC = 4;
 
@@ -139,8 +216,7 @@ export function createInitialTimeline(projectId: string): TimelineState {
   const clipVisEnd = uid("cl");
   const clipTextHero = uid("cl");
   const clipTextEnd = uid("cl");
-  const clipVoHero = uid("cl");
-  const clipVoEnd = uid("cl");
+  const clipVoMaster = uid("cl");
   const clipMusic = uid("cl");
 
   const tracks: TrackTimelineState[] = sortTracks([
@@ -178,7 +254,7 @@ export function createInitialTimeline(projectId: string): TimelineState {
       index: 3,
       name: "Voice & Script",
       metadata: { lane: "voice" },
-      clipIds: [clipVoHero, clipVoEnd],
+      clipIds: [clipVoMaster],
     },
   ]);
 
@@ -257,37 +333,21 @@ export function createInitialTimeline(projectId: string): TimelineState {
       animationOut: null,
       metadata: { isEndScene: true },
     },
-    [clipVoHero]: {
-      id: clipVoHero,
+    [clipVoMaster]: {
+      id: clipVoMaster,
       trackId: voiceId,
       startTime: 0,
-      duration: HERO_SEC,
+      duration: totalSec,
       mediaType: ClipMediaType.VOICEOVER,
       assetUrl: null,
-      label: "VO · Scene 1",
+      label: "Master voiceover",
       transformProps: {},
-      clipProperties: { sceneIndex: 0 },
-      content: { sceneIndex: 0, script: "" },
-      audioProps: { gainDb: 0, duckUnderMusicDb: -12 },
+      clipProperties: { mode: "masterScript" },
+      content: { script: "" },
+      audioProps: { volumePct: 100, duckUnderMusicDb: -12 },
       animationIn: null,
       animationOut: null,
-      metadata: {},
-    },
-    [clipVoEnd]: {
-      id: clipVoEnd,
-      trackId: voiceId,
-      startTime: HERO_SEC,
-      duration: END_SCENE_SEC,
-      mediaType: ClipMediaType.VOICEOVER,
-      assetUrl: null,
-      label: "VO · End",
-      transformProps: {},
-      clipProperties: { sceneIndex: 1 },
-      content: { sceneIndex: 1, script: "" },
-      audioProps: { gainDb: 0, duckUnderMusicDb: -12 },
-      animationIn: null,
-      animationOut: null,
-      metadata: { isEndScene: true },
+      metadata: { mode: "masterScript" },
     },
     [clipMusic]: {
       id: clipMusic,
@@ -300,7 +360,7 @@ export function createInitialTimeline(projectId: string): TimelineState {
       transformProps: {},
       clipProperties: { loudnessLUFS: -14 },
       content: null,
-      audioProps: { gainDb: -8 },
+      audioProps: { volumePct: 62 },
       animationIn: null,
       animationOut: null,
       metadata: {},
@@ -325,7 +385,9 @@ export function createInitialTimeline(projectId: string): TimelineState {
         brandDisplayName: "",
         logoUrl: "",
         showQrOverlay: true,
+        showFocusCardOverlay: true,
         selectedMusicPresetId: "none",
+        masterVoiceoverScript: "",
       },
       brandConfig: {
         primaryColor: "#fafafa",
@@ -394,6 +456,7 @@ type TimelineActions = {
   applyRefinementPatch: (patch: RefinementPatch) => void;
   /** Set generated VO asset URL on all voiceover clips + project metadata. */
   setVoiceoverAsset: (publicUrl: string, estimateSec?: number) => void;
+  setMasterVoiceoverScript: (script: string) => void;
   resetForProject: (projectId: string) => void;
   /** Replace timeline with a Gemini + Firecrawl director plan (30s+ multi-track). */
   hydrateFromDirectorPlan: (
@@ -549,9 +612,8 @@ export const useTimelineStore = create<TimelineStore>()(
 
         const visualTr = getTrackByLane(state.tracks, "visual");
         const textTr = getTrackByLane(state.tracks, "text");
-        const voiceTr = getTrackByLane(state.tracks, "voice");
         const musicTr = getTrackByLane(state.tracks, "music");
-        if (!visualTr || !textTr || !voiceTr || !musicTr) return;
+        if (!visualTr || !textTr || !musicTr) return;
 
         const endSceneIndex =
           typeof endVis.content?.sceneIndex === "number"
@@ -588,7 +650,6 @@ export const useTimelineStore = create<TimelineStore>()(
 
         const vId = uid("cl");
         const tId = uid("cl");
-        const voId = uid("cl");
 
         state.clipsById[vId] = {
           id: vId,
@@ -628,22 +689,6 @@ export const useTimelineStore = create<TimelineStore>()(
           metadata: {},
         };
 
-        state.clipsById[voId] = {
-          id: voId,
-          trackId: voiceTr.id,
-          startTime: startSec,
-          duration: durSec,
-          mediaType: ClipMediaType.VOICEOVER,
-          assetUrl: null,
-          label: `VO · Scene ${newSceneIndex + 1}`,
-          transformProps: {},
-          clipProperties: { sceneIndex: newSceneIndex },
-          content: { sceneIndex: newSceneIndex, script: "" },
-          audioProps: { gainDb: 0, duckUnderMusicDb: -12 },
-          animationIn: null,
-          animationOut: null,
-          metadata: {},
-        };
 
         const endVisualIndex = visualTr.clipIds.indexOf(endVis.id);
         visualTr.clipIds.splice(
@@ -664,33 +709,14 @@ export const useTimelineStore = create<TimelineStore>()(
                 c.content?.sceneIndex === updatedEndIndex,
             )?.id ??
           null;
-        const endVoiceClipId =
-          voiceTr.clipIds
-            .map((cid) => state.clipsById[cid])
-            .find(
-              (c) =>
-                c &&
-                typeof c.content?.sceneIndex === "number" &&
-                c.content?.sceneIndex === updatedEndIndex,
-            )?.id ??
-          null;
-
         const endTextPos =
           endTextClipId != null ? textTr.clipIds.indexOf(endTextClipId) : -1;
-        const endVoicePos =
-          endVoiceClipId != null ? voiceTr.clipIds.indexOf(endVoiceClipId) : -1;
 
         textTr.clipIds.splice(
           endTextPos >= 0 ? endTextPos : textTr.clipIds.length,
           0,
           tId,
         );
-        voiceTr.clipIds.splice(
-          endVoicePos >= 0 ? endVoicePos : voiceTr.clipIds.length,
-          0,
-          voId,
-        );
-
         relayoutEndScreen(state);
 
         // Ensure music spans full duration after the outro shifts.
@@ -770,17 +796,41 @@ export const useTimelineStore = create<TimelineStore>()(
 
     setVoiceoverAsset: (publicUrl, estimateSec) =>
       set((state) => {
+        ensureSingleVoiceClip(state);
+        const targetSec =
+          typeof estimateSec === "number" && estimateSec > 1
+            ? estimateSec
+            : framesToSeconds(state.durationInFrames, state.fps);
         state.project.metadata = {
           ...state.project.metadata,
           voiceoverAudioUrl: publicUrl,
+          voiceoverFlashAt: Date.now(),
           ...(estimateSec != null
             ? { voiceoverEstimateSec: estimateSec }
             : {}),
         };
+        fitScenesToDuration(state, targetSec);
         for (const c of Object.values(state.clipsById)) {
           if (c.mediaType === ClipMediaType.VOICEOVER) {
+            c.startTime = 0;
+            c.duration = targetSec;
             c.assetUrl = publicUrl;
           }
+        }
+      }),
+
+    setMasterVoiceoverScript: (script) =>
+      set((state) => {
+        ensureSingleVoiceClip(state);
+        state.project.metadata = {
+          ...state.project.metadata,
+          masterVoiceoverScript: script,
+        };
+        for (const c of Object.values(state.clipsById)) {
+          if (c.mediaType !== ClipMediaType.VOICEOVER) continue;
+          c.content = { ...(c.content ?? {}), script };
+          c.label = "Master voiceover";
+          c.metadata = { ...(c.metadata ?? {}), mode: "masterScript" };
         }
       }),
 
