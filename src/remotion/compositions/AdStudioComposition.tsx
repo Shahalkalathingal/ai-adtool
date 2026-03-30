@@ -41,6 +41,8 @@ export type AdStudioCompositionProps = {
     endScreenPhone: string;
   };
   voiceoverSrc: string | null;
+  /** Stretch/shrink VO so it matches final video duration. */
+  voiceoverRate: number;
 };
 
 const PLACEHOLDER_STILL =
@@ -419,6 +421,7 @@ export function AdStudioComposition({
   qrValue,
   brandKit,
   voiceoverSrc,
+  voiceoverRate,
 }: AdStudioCompositionProps) {
   const frame = useCurrentFrame();
   const { fps, durationInFrames } = useVideoConfig();
@@ -469,7 +472,13 @@ export function AdStudioComposition({
         {musicSrc ? (
           <Audio src={musicSrc} volume={Math.min(1, Math.max(0.05, musicVol))} />
         ) : null}
-        {voiceoverSrc ? <Audio src={voiceoverSrc} volume={0.92} /> : null}
+        {voiceoverSrc ? (
+          <Audio
+            src={voiceoverSrc}
+            volume={0.92}
+            playbackRate={voiceoverRate}
+          />
+        ) : null}
         <EndCard
           origin={origin}
           brandName={brandName}
@@ -547,7 +556,9 @@ export function AdStudioComposition({
       {musicSrc ? (
         <Audio src={musicSrc} volume={Math.min(1, Math.max(0.05, musicVol))} />
       ) : null}
-      {voiceoverSrc ? <Audio src={voiceoverSrc} volume={0.92} /> : null}
+      {voiceoverSrc ? (
+        <Audio src={voiceoverSrc} volume={0.92} playbackRate={voiceoverRate} />
+      ) : null}
 
       <AbsoluteFill style={{ opacity: sceneOpacity }}>
         {bgSrc ? (

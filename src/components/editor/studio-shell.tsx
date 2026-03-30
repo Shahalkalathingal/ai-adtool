@@ -8,7 +8,6 @@ import {
   PanelBottom,
   QrCode,
   Settings2,
-  Sparkles,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { DirectorPanel } from "@/components/editor/director-panel";
@@ -19,7 +18,6 @@ import { StudioMusicTab } from "@/components/editor/studio-music-tab";
 import { StudioQrPanel } from "@/components/editor/studio-qr-panel";
 import { StudioVoiceTab } from "@/components/editor/studio-voice-tab";
 import { Button } from "@/components/ui/button";
-import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { StudioPanelId } from "@/lib/types/studio-panel";
 import { useTimelineStore } from "@/lib/stores/timeline-store";
@@ -46,6 +44,8 @@ type StudioShellProps = {
 export function StudioShell({ projectId }: StudioShellProps) {
   const studioPanel = useTimelineStore((s) => s.studioPanel);
   const setStudioPanel = useTimelineStore((s) => s.setStudioPanel);
+  const directorPlanApplied = useTimelineStore((s) => s.directorPlanApplied);
+  const navItems = directorPlanApplied ? NAV : NAV.filter((n) => n.id === "slideshow");
 
   return (
     <div className="flex h-full min-h-0 w-full bg-sidebar/20">
@@ -53,7 +53,7 @@ export function StudioShell({ projectId }: StudioShellProps) {
         className="flex w-[50px] shrink-0 flex-col items-stretch gap-0.5 border-r border-border/60 bg-zinc-950/90 py-2 pl-1 pr-1"
         aria-label="Studio sections"
       >
-        {NAV.map((item) => {
+        {navItems.map((item) => {
           const Icon = item.icon;
           const active = studioPanel === item.id;
           return (
@@ -96,19 +96,19 @@ export function StudioShell({ projectId }: StudioShellProps) {
             </>
           )}
 
-          {studioPanel === "bottomBanner" && (
+          {directorPlanApplied && studioPanel === "bottomBanner" && (
             <StudioBottomBanner projectId={projectId} />
           )}
 
-          {studioPanel === "endScreen" && <StudioEndScreen />}
+          {directorPlanApplied && studioPanel === "endScreen" && <StudioEndScreen />}
 
-          {studioPanel === "qr" && <StudioQrPanel />}
+          {directorPlanApplied && studioPanel === "qr" && <StudioQrPanel />}
 
-          {studioPanel === "music" && <StudioMusicTab />}
+          {directorPlanApplied && studioPanel === "music" && <StudioMusicTab />}
 
-          {studioPanel === "voice" && <StudioVoiceTab />}
+          {directorPlanApplied && studioPanel === "voice" && <StudioVoiceTab />}
 
-          {studioPanel === "aiSettings" && (
+          {directorPlanApplied && studioPanel === "aiSettings" && (
             <>
               <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
                 AI input
@@ -119,27 +119,5 @@ export function StudioShell({ projectId }: StudioShellProps) {
         </div>
       </ScrollArea>
     </div>
-  );
-}
-
-function PlaceholderCard({
-  title,
-  description,
-}: {
-  title: string;
-  description: string;
-}) {
-  return (
-    <Card className="border-border/60 bg-card/35 shadow-none">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-sm">
-          <Sparkles className="size-4 text-muted-foreground" />
-          {title}
-        </CardTitle>
-        <CardDescription className="text-xs leading-relaxed">
-          {description}
-        </CardDescription>
-      </CardHeader>
-    </Card>
   );
 }

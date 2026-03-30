@@ -36,22 +36,42 @@ function sortTracks(tracks: TrackTimelineState[]): TrackTimelineState[] {
 }
 
 function recomputeTimelineDuration(state: TimelineState) {
-  let maxEnd = 0;
-  for (const c of Object.values(state.clipsById)) {
-    maxEnd = Math.max(maxEnd, c.startTime + c.duration);
+  const endVis = getEndSceneVisualClip(state.tracks, state.clipsById);
+
+  let timelineEndSec = 0;
+  if (endVis) {
+    timelineEndSec = endVis.startTime + endVis.duration;
+  } else {
+    for (const c of Object.values(state.clipsById)) {
+      timelineEndSec = Math.max(timelineEndSec, c.startTime + c.duration);
+    }
   }
-  state.durationInFrames = secondsToFrames(maxEnd, state.fps);
+
+  const endFrames = secondsToFrames(timelineEndSec, state.fps);
+  state.durationInFrames = Math.max(1, endFrames);
+  const endSecSnapped = framesToSeconds(state.durationInFrames, state.fps);
+
   state.project.metadata = {
     ...state.project.metadata,
-    targetDurationSec: maxEnd,
+    targetDurationSec: endSecSnapped,
   };
+
+  // Clamp everything to the final end-screen so we never show trailing
+  // "no visual" gaps after the outro.
+  for (const c of Object.values(state.clipsById)) {
+    const end = c.startTime + c.duration;
+    if (end > endSecSnapped) {
+      c.duration = Math.max(0.01, endSecSnapped - c.startTime);
+    }
+  }
+
   const musicTr = getTrackByLane(state.tracks, "music");
   if (musicTr) {
     for (const cid of musicTr.clipIds) {
       const mc = state.clipsById[cid];
       if (mc?.mediaType === ClipMediaType.MUSIC) {
         mc.startTime = 0;
-        mc.duration = maxEnd;
+        mc.duration = endSecSnapped;
       }
     }
   }
@@ -63,7 +83,28 @@ function relayoutEndScreen(state: TimelineState) {
     recomputeTimelineDuration(state);
     return;
   }
-  const tail = maxEndOfRegularScenes(state.tracks, state.clipsById);
+  // Keep regular scenes tightly packed with no black-frame gaps.
+  const regular = listSceneVisualClips(state.tracks, state.clipsById).sort(
+    (a, b) => a.startTime - b.startTime,
+  );
+  let cursor = 0;
+  for (const vis of regular) {
+    const si = vis.content?.sceneIndex;
+    if (typeof si !== "number") continue;
+    const start = framesToSeconds(secondsToFrames(cursor, state.fps), state.fps);
+    const grouped = findClipsForSceneIndex(state.tracks, state.clipsById, si, [
+      "visual",
+      "text",
+      "voice",
+    ]);
+    for (const c of Object.values(grouped)) {
+      c.startTime = start;
+    }
+    cursor = start + vis.duration;
+  }
+
+  const tailRaw = maxEndOfRegularScenes(state.tracks, state.clipsById);
+  const tail = framesToSeconds(secondsToFrames(tailRaw, state.fps), state.fps);
   const si = endVis.content?.sceneIndex;
   if (typeof si !== "number") {
     recomputeTimelineDuration(state);
@@ -135,7 +176,7 @@ export function createInitialTimeline(projectId: string): TimelineState {
       projectId,
       type: TrackType.AUDIO,
       index: 3,
-      name: "Voiceover",
+      name: "Voice & Script",
       metadata: { lane: "voice" },
       clipIds: [clipVoHero, clipVoEnd],
     },
@@ -302,6 +343,7 @@ export function createInitialTimeline(projectId: string): TimelineState {
     playheadFrame: 0,
     isPlaying: false,
     selectedClipId: null,
+    directorPlanApplied: false,
     studioPanel: "slideshow",
  };
 }
@@ -339,6 +381,8 @@ type TimelineActions = {
     visualClipId: string,
     newStartTime: number,
   ) => void;
+  /** Insert a new regular scene right before the locked End Screen. */
+  addSceneAtEnd: () => void;
   setSelectedClipId: (clipId: string | null) => void;
   /** Move / trim with min duration; extends timeline if clip end exceeds total. */
   setClipTiming: (
@@ -480,7 +524,11 @@ export const useTimelineStore = create<TimelineStore>()(
           endStart - clip.duration,
         );
         const clamped = Math.min(Math.max(minStart, newStartTime), maxStart);
-        const delta = clamped - clip.startTime;
+        const snap = (s: number) =>
+          framesToSeconds(secondsToFrames(s, state.fps), state.fps);
+        const nextStart = snap(clamped);
+        const clamped2 = Math.min(Math.max(minStart, nextStart), maxStart);
+        const delta = clamped2 - clip.startTime;
         if (Math.abs(delta) < 1e-6) return;
         const grouped = findClipsForSceneIndex(
           state.tracks,
@@ -489,9 +537,172 @@ export const useTimelineStore = create<TimelineStore>()(
           ["visual", "text", "voice"],
         );
         for (const c of Object.values(grouped)) {
-          c.startTime = Math.max(0, c.startTime + delta);
+          c.startTime = snap(Math.max(0, c.startTime + delta));
         }
         relayoutEndScreen(state);
+      }),
+
+    addSceneAtEnd: () =>
+      set((state) => {
+        const endVis = getEndSceneVisualClip(state.tracks, state.clipsById);
+        if (!endVis) return;
+
+        const visualTr = getTrackByLane(state.tracks, "visual");
+        const textTr = getTrackByLane(state.tracks, "text");
+        const voiceTr = getTrackByLane(state.tracks, "voice");
+        const musicTr = getTrackByLane(state.tracks, "music");
+        if (!visualTr || !textTr || !voiceTr || !musicTr) return;
+
+        const endSceneIndex =
+          typeof endVis.content?.sceneIndex === "number"
+            ? endVis.content.sceneIndex
+            : null;
+        if (endSceneIndex == null) return;
+
+        // New scene takes the current end-scene index. Then we bump the end
+        // scene index forward so scene indices stay unique.
+        const newSceneIndex = endSceneIndex;
+        const bumpEndSceneIndexTo = endSceneIndex + 1;
+
+        const durFrames = secondsToFrames(4, state.fps);
+        const durSec = framesToSeconds(durFrames, state.fps);
+
+        const tailRaw = maxEndOfRegularScenes(state.tracks, state.clipsById);
+        const startSec = framesToSeconds(
+          secondsToFrames(tailRaw, state.fps),
+          state.fps,
+        );
+
+        // Bump existing end scene sceneIndex in visual/text/voice clips.
+        for (const c of Object.values(state.clipsById)) {
+          if (!isEndSceneClip(c)) continue;
+          if (c.clipProperties && typeof c.clipProperties === "object") {
+            c.clipProperties = { ...c.clipProperties, sceneIndex: bumpEndSceneIndexTo };
+          }
+          if (c.content && typeof c.content === "object") {
+            c.content = { ...c.content, sceneIndex: bumpEndSceneIndexTo };
+          }
+        }
+
+        const placeholderHeadline = "New headline";
+
+        const vId = uid("cl");
+        const tId = uid("cl");
+        const voId = uid("cl");
+
+        state.clipsById[vId] = {
+          id: vId,
+          trackId: visualTr.id,
+          startTime: startSec,
+          duration: durSec,
+          mediaType: ClipMediaType.VIDEO,
+          assetUrl: null,
+          label: `Scene ${newSceneIndex + 1}`,
+          transformProps: { opacity: 1, scaleX: 1, scaleY: 1 },
+          clipProperties: { visualTreatment: "", sceneIndex: newSceneIndex },
+          content: {
+            sceneIndex: newSceneIndex,
+            headline: placeholderHeadline,
+            subcopy: "",
+          },
+          audioProps: null,
+          animationIn: { preset: "fade", durationSec: 0.35 },
+          animationOut: null,
+          metadata: {},
+        };
+
+        state.clipsById[tId] = {
+          id: tId,
+          trackId: textTr.id,
+          startTime: startSec,
+          duration: durSec,
+          mediaType: ClipMediaType.TEXT,
+          assetUrl: null,
+          label: placeholderHeadline,
+          transformProps: { opacity: 1 },
+          clipProperties: { role: "headline", sceneIndex: newSceneIndex },
+          content: { sceneIndex: newSceneIndex, text: placeholderHeadline, subcopy: "" },
+          audioProps: null,
+          animationIn: { preset: "slide", direction: "up", durationSec: 0.45 },
+          animationOut: null,
+          metadata: {},
+        };
+
+        state.clipsById[voId] = {
+          id: voId,
+          trackId: voiceTr.id,
+          startTime: startSec,
+          duration: durSec,
+          mediaType: ClipMediaType.VOICEOVER,
+          assetUrl: null,
+          label: `VO · Scene ${newSceneIndex + 1}`,
+          transformProps: {},
+          clipProperties: { sceneIndex: newSceneIndex },
+          content: { sceneIndex: newSceneIndex, script: "" },
+          audioProps: { gainDb: 0, duckUnderMusicDb: -12 },
+          animationIn: null,
+          animationOut: null,
+          metadata: {},
+        };
+
+        const endVisualIndex = visualTr.clipIds.indexOf(endVis.id);
+        visualTr.clipIds.splice(
+          endVisualIndex >= 0 ? endVisualIndex : visualTr.clipIds.length,
+          0,
+          vId,
+        );
+
+        const updatedEndIndex = bumpEndSceneIndexTo;
+        // Find the end text / end voice clip ids by new sceneIndex.
+        const endTextClipId =
+          textTr.clipIds
+            .map((cid) => state.clipsById[cid])
+            .find(
+              (c) =>
+                c &&
+                typeof c.content?.sceneIndex === "number" &&
+                c.content?.sceneIndex === updatedEndIndex,
+            )?.id ??
+          null;
+        const endVoiceClipId =
+          voiceTr.clipIds
+            .map((cid) => state.clipsById[cid])
+            .find(
+              (c) =>
+                c &&
+                typeof c.content?.sceneIndex === "number" &&
+                c.content?.sceneIndex === updatedEndIndex,
+            )?.id ??
+          null;
+
+        const endTextPos =
+          endTextClipId != null ? textTr.clipIds.indexOf(endTextClipId) : -1;
+        const endVoicePos =
+          endVoiceClipId != null ? voiceTr.clipIds.indexOf(endVoiceClipId) : -1;
+
+        textTr.clipIds.splice(
+          endTextPos >= 0 ? endTextPos : textTr.clipIds.length,
+          0,
+          tId,
+        );
+        voiceTr.clipIds.splice(
+          endVoicePos >= 0 ? endVoicePos : voiceTr.clipIds.length,
+          0,
+          voId,
+        );
+
+        relayoutEndScreen(state);
+
+        // Ensure music spans full duration after the outro shifts.
+        const musicClipId =
+          musicTr.clipIds.find(
+            (cid) => state.clipsById[cid]?.mediaType === ClipMediaType.MUSIC,
+          ) ?? musicTr.clipIds[0];
+        const mc = musicClipId ? state.clipsById[musicClipId] : null;
+        if (mc) {
+          mc.startTime = 0;
+          mc.duration = framesToSeconds(state.durationInFrames, state.fps);
+        }
       }),
 
     setBrandKit: (patch) =>
@@ -549,9 +760,11 @@ export const useTimelineStore = create<TimelineStore>()(
       set((state) => {
         const clip = state.clipsById[clipId];
         if (!clip) return;
+        const snap = (s: number) =>
+          framesToSeconds(secondsToFrames(s, state.fps), state.fps);
         const timelineSec = framesToSeconds(state.durationInFrames, state.fps);
         const maxStart = Math.max(0, timelineSec - clip.duration);
-        clip.startTime = Math.min(Math.max(0, startTime), maxStart);
+        clip.startTime = Math.min(Math.max(0, snap(startTime)), maxStart);
         relayoutEndScreen(state);
       }),
 
@@ -680,6 +893,7 @@ export const useTimelineStore = create<TimelineStore>()(
         state.playheadFrame = 0;
         state.isPlaying = false;
         state.selectedClipId = next.selectedClipId;
+        state.directorPlanApplied = next.directorPlanApplied;
         state.studioPanel = next.studioPanel;
       }),
 
@@ -698,7 +912,8 @@ export const useTimelineStore = create<TimelineStore>()(
         state.playheadFrame = 0;
         state.isPlaying = false;
         state.selectedClipId = null;
-        state.studioPanel = "bottomBanner";
+        state.directorPlanApplied = true;
+        state.studioPanel = "slideshow";
         relayoutEndScreen(state);
       }),
   })),

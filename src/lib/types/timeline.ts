@@ -96,6 +96,8 @@ export type TimelineState = {
   isPlaying: boolean;
   /** Inspector selection (one clip at a time). */
   selectedClipId: string | null;
+  /** Set to true once Director successfully hydrates the timeline. */
+  directorPlanApplied: boolean;
   /** Studio left rail: contextual panel. */
   studioPanel: StudioPanelId;
 };

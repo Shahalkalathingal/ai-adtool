@@ -47,7 +47,13 @@ function buildPrompt(input: {
     .filter(Boolean)
     .join("\n");
 
-  return `You are a senior performance marketing director. Output ONLY valid JSON (no markdown fences, no commentary).
+  return `You are a senior performance marketing director. Output ONLY valid JSON.
+
+RULES:
+- Return a single JSON object (no markdown fences, no backticks).
+- Do not wrap it in any text (no "Sure" / no explanations).
+- Use double quotes for ALL JSON strings.
+- No trailing commas.
 
 Goal: design a 16:9 (landscape) video ad of at least 30 seconds total, with confident pacing.
 
@@ -98,6 +104,36 @@ Brand / page context:
 ${brandContext}`;
 }
 
+function extractJsonObject(text: string): string | null {
+  const t = text.trim();
+  if (!t) return null;
+
+  // Remove code fences if the model wraps JSON in ```json ... ```
+  const fenced = t.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  const candidate = fenced?.[1]?.trim() ?? t;
+
+  try {
+    // If it's already valid, return as-is.
+    JSON.parse(candidate);
+    return candidate;
+  } catch {
+    // fallthrough
+  }
+
+  const start = candidate.indexOf("{");
+  const end = candidate.lastIndexOf("}");
+  if (start >= 0 && end > start) {
+    const obj = candidate.slice(start, end + 1).trim();
+    try {
+      JSON.parse(obj);
+      return obj;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
 /**
  * Gemini — turns scraped brand context into a frame-ready DirectorPlan.
  */
@@ -124,12 +160,16 @@ export async function runGeminiDirector(input: {
 
   const result = await model.generateContent(buildPrompt(input));
   const text = result.response.text();
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text) as unknown;
-  } catch {
-    throw new Error("Gemini returned non-JSON. Try again or shorten the page.");
+  const jsonText = extractJsonObject(text);
+  if (!jsonText) {
+    // Include only a tiny snippet to keep payloads manageable.
+    const snippet = text.trim().slice(0, 240).replace(/\s+/g, " ");
+    throw new Error(
+      `Gemini returned non-JSON. Try again or shorten the page. Snippet: ${snippet}`,
+    );
   }
+
+  const parsed = JSON.parse(jsonText) as unknown;
 
   const checked = directorPlanSchema.safeParse(parsed);
   if (!checked.success) {

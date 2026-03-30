@@ -6,6 +6,8 @@ import {
   Lock,
   Mic2,
   Music2,
+  PanelBottom,
+  QrCode,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -13,7 +15,6 @@ import { generateVoiceoverFromTimelineJson } from "@/app/actions/voiceover-actio
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
 import { Slider } from "@/components/ui/slider";
 import {
   Tooltip,
@@ -220,11 +221,12 @@ function TimelineClipBar({ clipId, totalSec, lane, projectId }: TimelineClipProp
             "border-border/90 bg-background/55 shadow-sm backdrop-blur-md",
             "ring-1 ring-white/5 transition-colors",
             selected && "ring-2 ring-primary/80",
+            "overflow-hidden",
             "group",
           )}
           style={{
-            left: `${left}%`,
-            width: `${Math.max(width, 1.1)}%`,
+            left: `calc(${left}% + 1px)`,
+            width: `calc(${Math.max(width, 1.1)}% - 2px)`,
           }}
           onPointerDown={(e) => {
             if (
@@ -387,10 +389,11 @@ function SceneStripBar({ visualClipId, totalSec, projectId }: SceneStripBarProps
             selected && "ring-2 ring-primary/80",
             isEnd && "cursor-default border-amber-500/35 bg-amber-950/15",
             !isEnd && "cursor-grab active:cursor-grabbing",
+            "overflow-hidden",
           )}
           style={{
-            left: `${left}%`,
-            width: `${Math.max(width, 0.8)}%`,
+            left: `calc(${left}% + 1px)`,
+            width: `calc(${Math.max(width, 0.8)}% - 2px)`,
           }}
           onPointerDown={(e) => {
             if ((e.target as HTMLElement).closest("[data-no-drag]")) return;
@@ -447,6 +450,9 @@ export function MultiTrackTimeline({ projectId }: MultiTrackTimelineProps) {
   const playheadFrame = useTimelineStore((s) => s.playheadFrame);
   const setPlayheadFrame = useTimelineStore((s) => s.setPlayheadFrame);
   const setIsPlaying = useTimelineStore((s) => s.setIsPlaying);
+  const addSceneAtEnd = useTimelineStore((s) => s.addSceneAtEnd);
+  const setStudioPanel = useTimelineStore((s) => s.setStudioPanel);
+  const project = useTimelineStore((s) => s.project);
   const [voBusy, setVoBusy] = useState(false);
 
   const totalSec = framesToSeconds(durationInFrames, fps);
@@ -471,7 +477,8 @@ export function MultiTrackTimeline({ projectId }: MultiTrackTimelineProps) {
       sorted.filter((t) => {
         const lane =
           typeof t.metadata?.lane === "string" ? t.metadata.lane : "";
-        return lane !== "visual" && lane !== "text" && lane !== "voice";
+        // Visual + text are represented by the Scene lane above.
+        return lane !== "visual" && lane !== "text";
       }),
     [sorted],
   );
@@ -481,6 +488,18 @@ export function MultiTrackTimeline({ projectId }: MultiTrackTimelineProps) {
       (typeof t.metadata?.lane === "string" && t.metadata.lane === "voice") ||
       t.name?.toLowerCase().includes("voice"),
   );
+  const hasVoiceoverAudio = useMemo(() => {
+    const meta = project.metadata as Record<string, unknown>;
+    const fromMeta =
+      typeof meta.voiceoverAudioUrl === "string" && meta.voiceoverAudioUrl.trim().length > 0;
+    if (fromMeta) return true;
+    return Object.values(clipsById).some(
+      (c) =>
+        c.mediaType === ClipMediaType.VOICEOVER &&
+        typeof c.assetUrl === "string" &&
+        c.assetUrl.trim().length > 0,
+    );
+  }, [project.metadata, clipsById]);
 
   const setVoiceoverAsset = useTimelineStore((s) => s.setVoiceoverAsset);
 
@@ -527,13 +546,13 @@ export function MultiTrackTimeline({ projectId }: MultiTrackTimelineProps) {
               ) : (
                 <Mic2 className="size-3.5" />
               )}
-              Generate voiceover
+              {hasVoiceoverAudio ? "Update current voiceover" : "Generate voiceover"}
             </Button>
           ) : null}
         </div>
       </div>
 
-      <ScrollArea className="w-full pb-1">
+      <ScrollArea className="max-h-[238px] w-full">
         <div className="min-w-[720px] space-y-0 pr-4">
           <div
             className={cn(
@@ -557,14 +576,82 @@ export function MultiTrackTimeline({ projectId }: MultiTrackTimelineProps) {
                   projectId={projectId}
                 />
               ))}
+              {endSceneVis ? (
+                <button
+                  type="button"
+                  aria-label="Add scene"
+                  onClick={() => addSceneAtEnd()}
+                  className="pointer-events-auto absolute top-1/2 z-30 -translate-y-1/2 rounded-lg border border-border/70 bg-background/40 px-2 py-1 text-[18px] font-bold text-foreground/90 shadow-sm backdrop-blur-md hover:bg-background/60 hover:text-foreground"
+                  style={{
+                    left: `calc(${totalSec > 0 ? (endSceneVis.startTime / totalSec) * 100 : 0}% - 14px)`,
+                  }}
+                >
+                  +
+                </button>
+              ) : null}
               <div
-                className="pointer-events-none absolute top-0 bottom-0 z-20 w-px bg-primary shadow-[0_0_14px_rgba(250,250,250,0.45)]"
+                className="pointer-events-none absolute top-0 bottom-0 z-20 w-[2px] bg-rose-500/90 shadow-[0_0_18px_rgba(244,63,94,0.75)]"
                 style={{
                   left: `${totalSec > 0 ? (playheadSec / totalSec) * 100 : 0}%`,
                 }}
               />
             </div>
           </div>
+
+          {/* Static overlay lanes (Bottom banner + QR code) to match the Studio reference. */}
+          <button
+            type="button"
+            onClick={() => setStudioPanel("bottomBanner")}
+            className={cn(
+              "flex w-full border-b border-border/60 bg-muted/10 text-left",
+              "border-l-2",
+              "border-l-violet-500/90",
+              "hover:bg-violet-500/10",
+            )}
+          >
+            <div className="flex w-36 shrink-0 items-center gap-2 border-r border-border/60 bg-sidebar/35 px-2 py-2 backdrop-blur-sm">
+              <PanelBottom className="size-3.5 text-muted-foreground" />
+              <span className="truncate text-[11px] font-medium text-foreground/90">
+                Bottom banner
+              </span>
+            </div>
+            <div className="timeline-row-area relative min-h-7 flex-1 touch-none select-none">
+              <div className="absolute top-1 bottom-1 left-[1px] right-[1px] rounded-sm border border-border/50 bg-violet-500/10" />
+              <div
+                className="pointer-events-none absolute top-0 bottom-0 z-20 w-[2px] bg-rose-500/90 shadow-[0_0_18px_rgba(244,63,94,0.75)]"
+                style={{
+                  left: `${totalSec > 0 ? (playheadSec / totalSec) * 100 : 0}%`,
+                }}
+              />
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setStudioPanel("qr")}
+            className={cn(
+              "flex w-full border-b border-border/60 bg-muted/10 text-left",
+              "border-l-2",
+              "border-l-sky-500/90",
+              "hover:bg-sky-500/10",
+            )}
+          >
+            <div className="flex w-36 shrink-0 items-center gap-2 border-r border-border/60 bg-sidebar/35 px-2 py-2 backdrop-blur-sm">
+              <QrCode className="size-3.5 text-muted-foreground" />
+              <span className="truncate text-[11px] font-medium text-foreground/90">
+                QR code
+              </span>
+            </div>
+            <div className="timeline-row-area relative min-h-7 flex-1 touch-none select-none">
+              <div className="absolute top-1 bottom-1 left-[1px] right-[1px] rounded-sm border border-border/50 bg-sky-500/10" />
+              <div
+                className="pointer-events-none absolute top-0 bottom-0 z-20 w-[2px] bg-rose-500/90 shadow-[0_0_18px_rgba(244,63,94,0.75)]"
+                style={{
+                  left: `${totalSec > 0 ? (playheadSec / totalSec) * 100 : 0}%`,
+                }}
+              />
+            </div>
+          </button>
 
           {timelineTracks.map((track) => {
             const lane =
@@ -589,9 +676,7 @@ export function MultiTrackTimeline({ projectId }: MultiTrackTimelineProps) {
                     {track.name ?? track.type}
                   </span>
                 </div>
-                <div
-                  className="timeline-row-area relative min-h-11 flex-1 touch-none select-none"
-                >
+                <div className="timeline-row-area relative min-h-9 flex-1 touch-none select-none">
                   {track.clipIds.map((cid) => (
                     <TimelineClipBar
                       key={cid}
@@ -602,7 +687,7 @@ export function MultiTrackTimeline({ projectId }: MultiTrackTimelineProps) {
                     />
                   ))}
                   <div
-                    className="pointer-events-none absolute top-0 bottom-0 z-20 w-px bg-primary shadow-[0_0_14px_rgba(250,250,250,0.45)]"
+                    className="pointer-events-none absolute top-0 bottom-0 z-20 w-[2px] bg-rose-500/90 shadow-[0_0_18px_rgba(244,63,94,0.75)]"
                     style={{
                       left: `${totalSec > 0 ? (playheadSec / totalSec) * 100 : 0}%`,
                     }}
@@ -611,13 +696,13 @@ export function MultiTrackTimeline({ projectId }: MultiTrackTimelineProps) {
               </div>
             );
           })}
+
         </div>
+        <ScrollBar orientation="vertical" />
         <ScrollBar orientation="horizontal" />
       </ScrollArea>
 
-      <Separator className="bg-border/80" />
-
-      <div className="space-y-1.5 px-0.5">
+      <div className="space-y-1 px-0.5 pt-0">
         <div className="flex justify-between text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
           <span>Playhead</span>
           <span>scrub</span>

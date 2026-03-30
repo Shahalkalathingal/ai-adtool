@@ -5,6 +5,7 @@ import type {
 } from "@/lib/services/firecrawl-scrape";
 import type { DirectorPlan } from "@/lib/types/director-plan";
 import {
+  framesToSeconds,
   secondsToFrames,
   type ClipTimelineState,
   type ProjectTimelineMeta,
@@ -44,6 +45,11 @@ export function buildTimelineFromDirectorPlan(
   const totalDuration = bodyDuration + END_SCENE_SEC;
   const durationInFrames = secondsToFrames(totalDuration, fps);
 
+  const endDurFrames = secondsToFrames(END_SCENE_SEC, fps);
+  const endDurSec = framesToSeconds(endDurFrames, fps);
+  const bodyFramesTarget = Math.max(0, durationInFrames - endDurFrames);
+  const totalDurationSecSnapped = framesToSeconds(durationInFrames, fps);
+
   const visualTrackId = uid("tr");
   const textTrackId = uid("tr");
   const musicTrackId = uid("tr");
@@ -59,9 +65,19 @@ export function buildTimelineFromDirectorPlan(
   );
   const sb = plan.scrapedBrand;
 
-  let cursor = 0;
-  for (const scene of plan.scenes) {
-    const dur = scene.durationSec;
+  let cursorFrames = 0;
+  for (const [i, scene] of plan.scenes.entries()) {
+    let durFrames = secondsToFrames(scene.durationSec, fps);
+    const isLastScene = i === plan.scenes.length - 1;
+    if (isLastScene) {
+      // Ensure body scenes end exactly on the last frame before the outro.
+      durFrames = Math.max(1, bodyFramesTarget - cursorFrames);
+    } else {
+      const remaining = bodyFramesTarget - cursorFrames;
+      durFrames = Math.max(1, Math.min(durFrames, remaining));
+    }
+    const startTime = framesToSeconds(cursorFrames, fps);
+    const dur = framesToSeconds(durFrames, fps);
 
     const explicit =
       scene.imageUrl && scene.imageUrl.startsWith("http")
@@ -75,7 +91,7 @@ export function buildTimelineFromDirectorPlan(
     clipsById[vId] = {
       id: vId,
       trackId: visualTrackId,
-      startTime: cursor,
+      startTime,
       duration: dur,
       mediaType: ClipMediaType.VIDEO,
       assetUrl,
@@ -101,7 +117,7 @@ export function buildTimelineFromDirectorPlan(
     clipsById[tId] = {
       id: tId,
       trackId: textTrackId,
-      startTime: cursor,
+      startTime,
       duration: dur,
       mediaType: ClipMediaType.TEXT,
       assetUrl: null,
@@ -109,6 +125,7 @@ export function buildTimelineFromDirectorPlan(
       transformProps: { opacity: 1 },
       clipProperties: { role: "headline", sceneIndex: scene.index },
       content: {
+        sceneIndex: scene.index,
         text: scene.headline,
         subcopy: scene.subcopy,
       },
@@ -123,7 +140,7 @@ export function buildTimelineFromDirectorPlan(
     clipsById[voId] = {
       id: voId,
       trackId: voiceTrackId,
-      startTime: cursor,
+      startTime,
       duration: dur,
       mediaType: ClipMediaType.VOICEOVER,
       assetUrl: null,
@@ -137,11 +154,11 @@ export function buildTimelineFromDirectorPlan(
       metadata: {},
     };
 
-    cursor += dur;
+    cursorFrames += durFrames;
   }
 
   const endSceneIndex = plan.scenes.length;
-  const endStart = cursor;
+  const endStart = framesToSeconds(cursorFrames, fps);
   const vEnd = uid("cl");
   const tEnd = uid("cl");
   const voEnd = uid("cl");
@@ -153,7 +170,7 @@ export function buildTimelineFromDirectorPlan(
     id: vEnd,
     trackId: visualTrackId,
     startTime: endStart,
-    duration: END_SCENE_SEC,
+    duration: endDurSec,
     mediaType: ClipMediaType.VIDEO,
     assetUrl: null,
     label: "End screen",
@@ -169,7 +186,7 @@ export function buildTimelineFromDirectorPlan(
     id: tEnd,
     trackId: textTrackId,
     startTime: endStart,
-    duration: END_SCENE_SEC,
+    duration: endDurSec,
     mediaType: ClipMediaType.TEXT,
     assetUrl: null,
     label: "End screen",
@@ -185,7 +202,7 @@ export function buildTimelineFromDirectorPlan(
     id: voEnd,
     trackId: voiceTrackId,
     startTime: endStart,
-    duration: END_SCENE_SEC,
+    duration: endDurSec,
     mediaType: ClipMediaType.VOICEOVER,
     assetUrl: null,
     label: "VO · End",
@@ -203,7 +220,7 @@ export function buildTimelineFromDirectorPlan(
     id: musicClipId,
     trackId: musicTrackId,
     startTime: 0,
-    duration: totalDuration,
+    duration: totalDurationSecSnapped,
     mediaType: ClipMediaType.MUSIC,
     assetUrl: null,
     label: `Music · ${plan.musicMood}`,
@@ -249,7 +266,7 @@ export function buildTimelineFromDirectorPlan(
       projectId,
       type: TrackType.AUDIO,
       index: 3,
-      name: "Voiceover",
+      name: "Voice & Script",
       metadata: { lane: "voice" },
       clipIds: voiceClipIds,
     },
@@ -278,7 +295,7 @@ export function buildTimelineFromDirectorPlan(
     name: company,
     description: plan.brand.tagline,
     metadata: {
-      targetDurationSec: totalDuration,
+      targetDurationSec: totalDurationSecSnapped,
       aspectRatio: "16:9",
       sceneCount: plan.scenes.length + 1,
       showQrOverlay: true,

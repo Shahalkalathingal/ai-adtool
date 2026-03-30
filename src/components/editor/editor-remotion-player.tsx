@@ -61,6 +61,7 @@ export const EditorRemotionPlayer = forwardRef<PlayerRef, object>(
     const project = useTimelineStore((s) => s.project);
     const tracks = useTimelineStore((s) => s.tracks);
     const clipsById = useTimelineStore((s) => s.clipsById);
+    const setStudioPanel = useTimelineStore((s) => s.setStudioPanel);
 
     const origin =
       typeof window !== "undefined" ? window.location.origin : "";
@@ -73,6 +74,18 @@ export const EditorRemotionPlayer = forwardRef<PlayerRef, object>(
       (typeof bc.website === "string" && bc.website) ||
       (typeof meta.website === "string" ? meta.website : "") ||
       (typeof meta.websiteUrl === "string" ? meta.websiteUrl : "");
+    const targetSec =
+      typeof meta.targetDurationSec === "number"
+        ? meta.targetDurationSec
+        : durationInFrames / Math.max(1, fps);
+    const voEstimateSec =
+      typeof meta.voiceoverEstimateSec === "number"
+        ? meta.voiceoverEstimateSec
+        : null;
+    const voiceoverRate =
+      voEstimateSec && voEstimateSec > 0 && targetSec > 0
+        ? Math.min(1.8, Math.max(0.55, voEstimateSec / targetSec))
+        : 1;
 
     const inputProps = useMemo(
       () => ({
@@ -98,6 +111,7 @@ export const EditorRemotionPlayer = forwardRef<PlayerRef, object>(
             typeof bc.endScreenPhone === "string" ? bc.endScreenPhone : "",
         },
         voiceoverSrc: resolveVoiceoverSrc(origin, meta),
+        voiceoverRate,
       }),
       [
         origin,
@@ -114,6 +128,7 @@ export const EditorRemotionPlayer = forwardRef<PlayerRef, object>(
         bc.endScreenTagline,
         bc.endScreenPhone,
         website,
+        voiceoverRate,
       ],
     );
 
@@ -122,8 +137,8 @@ export const EditorRemotionPlayer = forwardRef<PlayerRef, object>(
         ref && typeof ref !== "function"
           ? (ref as React.MutableRefObject<PlayerRef | null>).current
           : null;
-      player?.seekTo(playheadFrame);
-    }, [playheadFrame, ref]);
+      if (!isPlaying) player?.seekTo(playheadFrame);
+    }, [playheadFrame, ref, isPlaying]);
 
     useEffect(() => {
       const player =
@@ -132,30 +147,47 @@ export const EditorRemotionPlayer = forwardRef<PlayerRef, object>(
           : null;
       if (!isPlaying) {
         player?.pause();
+      } else {
+        player?.play();
       }
     }, [isPlaying, ref]);
 
     return (
-      <Player
-        ref={ref}
-        component={AdStudioComposition}
-        durationInFrames={durationInFrames}
-        compositionWidth={1280}
-        compositionHeight={720}
-        fps={fps}
-        controls={false}
-        spaceKeyToPlayOrPause={false}
-        acknowledgeRemotionLicense
-        inputProps={inputProps}
-        style={{
-          width: "100%",
-          height: "100%",
-          borderRadius: "var(--radius-lg)",
-          overflow: "hidden",
-          boxShadow:
-            "0 25px 50px -12px rgb(0 0 0 / 0.65), 0 0 0 1px rgba(255,255,255,0.06)",
-        }}
-      />
+      <div className="relative h-full w-full">
+        <Player
+          ref={ref}
+          component={AdStudioComposition}
+          durationInFrames={durationInFrames}
+          compositionWidth={1280}
+          compositionHeight={720}
+          fps={fps}
+          controls={false}
+          spaceKeyToPlayOrPause={false}
+          acknowledgeRemotionLicense
+          inputProps={inputProps}
+          style={{
+            width: "100%",
+            height: "100%",
+            borderRadius: "var(--radius-lg)",
+            overflow: "hidden",
+            boxShadow:
+              "0 25px 50px -12px rgb(0 0 0 / 0.65), 0 0 0 1px rgba(255,255,255,0.06)",
+          }}
+        />
+
+        <button
+          type="button"
+          className="absolute right-[2.2%] top-[3.4%] h-[12%] w-[10%] rounded-md border border-transparent bg-transparent hover:border-white/30"
+          aria-label="Edit QR code"
+          onClick={() => setStudioPanel("qr")}
+        />
+        <button
+          type="button"
+          className="absolute bottom-[2.5%] left-[2.8%] h-[20%] w-[94.4%] rounded-md border border-transparent bg-transparent hover:border-white/25"
+          aria-label="Edit bottom banner"
+          onClick={() => setStudioPanel("bottomBanner")}
+        />
+      </div>
     );
   },
 );

@@ -36,7 +36,8 @@
     ".next/dev/types/**/*.ts",
     ".next/types/**/*.ts",
     "next-env.d.ts",
-    "..\\..\\..\\..\\AppData\\Local\\ai-adtool-next-cache\\db8f72b3f5383d13/types/**/*.ts"
+    "src/**/*.ts",
+    "src/**/*.tsx"
   ],
   "exclude": [
     "node_modules"
