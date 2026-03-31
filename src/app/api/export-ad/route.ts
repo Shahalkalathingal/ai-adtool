@@ -29,6 +29,7 @@ import { resolveVideoDurationFrames } from "@/lib/voiceover/video-duration-polic
 // Vercel Hobby plan allows 1-300s for Serverless Functions.
 export const maxDuration = 300;
 
+
 const COMPOSITION_ID = "AdStudioExport";
 
 const bodySchema = z.object({
