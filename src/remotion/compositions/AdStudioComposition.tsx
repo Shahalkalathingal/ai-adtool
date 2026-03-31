@@ -454,8 +454,10 @@ function endOutroCtaStartFrames(fps: number): number {
   const logoDelay = Math.round(0.1 * fps);
   const logoIn = Math.round(0.3 * fps);
   const headlineDelay = Math.round(0.16 * fps);
-  const headlineTw = Math.max(10, Math.round(0.88 * fps));
-  const gap = Math.round(0.1 * fps);
+  // Slightly faster headline type-on so CTA doesn't feel laggy.
+  const headlineTw = Math.max(10, Math.round(0.6 * fps));
+  // Smaller gap before CTA row so button enters more promptly.
+  const gap = Math.round(0.02 * fps);
   return logoDelay + logoIn + headlineDelay + headlineTw + gap;
 }
 

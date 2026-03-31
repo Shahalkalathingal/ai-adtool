@@ -2,7 +2,7 @@
 
 import type { PlayerRef } from "@remotion/player";
 import { motion } from "framer-motion";
-import { Clapperboard, Pause, Play, TriangleAlert } from "lucide-react";
+import { Clapperboard, Maximize2, Minimize2, Pause, Play, TriangleAlert } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { ExportStudioModal } from "@/components/editor/export-studio-modal";
@@ -41,11 +41,13 @@ function isEditableTarget(t: EventTarget | null): boolean {
 export function EditorWorkspace({ projectId }: EditorWorkspaceProps) {
   const router = useRouter();
   const playerRef = useRef<PlayerRef>(null);
+  const previewShellRef = useRef<HTMLDivElement | null>(null);
   const headerRef = useRef<HTMLElement | null>(null);
   const transportRef = useRef<HTMLDivElement | null>(null);
   const timelineRef = useRef<HTMLDivElement | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [showGoBackPrompt, setShowGoBackPrompt] = useState(false);
+  const [isPreviewFullscreen, setIsPreviewFullscreen] = useState(false);
   const [previewMaxHeightPx, setPreviewMaxHeightPx] = useState(560);
   const entrancePhase = useStudioEntranceStore((s) => s.phase);
   const isPlaying = useTimelineStore((s) => s.isPlaying);
@@ -112,6 +114,20 @@ export function EditorWorkspace({ projectId }: EditorWorkspaceProps) {
     router.push("/");
   };
 
+  const togglePreviewFullscreen = async () => {
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+        return;
+      }
+      const node = previewShellRef.current;
+      if (!node) return;
+      await node.requestFullscreen();
+    } catch {
+      // Fullscreen may fail on browser restrictions; ignore gracefully.
+    }
+  };
+
   useEffect(() => {
     const clamp = (n: number, min: number, max: number) =>
       Math.max(min, Math.min(max, n));
@@ -139,6 +155,14 @@ export function EditorWorkspace({ projectId }: EditorWorkspaceProps) {
       window.removeEventListener("resize", recalc);
     };
   }, [directorPlanApplied]);
+
+  useEffect(() => {
+    const onFs = () => {
+      setIsPreviewFullscreen(document.fullscreenElement === previewShellRef.current);
+    };
+    document.addEventListener("fullscreenchange", onFs);
+    return () => document.removeEventListener("fullscreenchange", onFs);
+  }, []);
 
   return (
     <>
@@ -261,6 +285,7 @@ export function EditorWorkspace({ projectId }: EditorWorkspaceProps) {
                 <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden px-3 py-3">
                   <div className="mx-auto w-full max-w-[1040px] shrink-0 px-1">
                     <motion.div
+                      ref={previewShellRef}
                       className="relative w-full overflow-hidden rounded-xl bg-black ring-1 ring-white/10"
                       style={{
                         aspectRatio: "16 / 9",
@@ -315,6 +340,30 @@ export function EditorWorkspace({ projectId }: EditorWorkspaceProps) {
                           </div>
                         </div>
                       )}
+                      {directorPlanApplied ? (
+                        <button
+                          type="button"
+                          onClick={() => void togglePreviewFullscreen()}
+                          className="absolute bottom-3 right-3 z-40 inline-flex items-center gap-2 rounded-full border border-white/20 bg-black/60 px-3 py-2 text-[11px] font-semibold text-white shadow-[0_8px_24px_rgba(0,0,0,0.45)] backdrop-blur-md transition hover:border-white/35 hover:bg-black/70"
+                          aria-label={
+                            isPreviewFullscreen
+                              ? "Exit fullscreen preview"
+                              : "Enter fullscreen preview"
+                          }
+                          title={
+                            isPreviewFullscreen
+                              ? "Exit fullscreen"
+                              : "Fullscreen"
+                          }
+                        >
+                          {isPreviewFullscreen ? (
+                            <Minimize2 className="size-3.5" />
+                          ) : (
+                            <Maximize2 className="size-3.5" />
+                          )}
+                          {isPreviewFullscreen ? "Exit" : "Fullscreen"}
+                        </button>
+                      ) : null}
                     </motion.div>
                   </div>
                 </div>
