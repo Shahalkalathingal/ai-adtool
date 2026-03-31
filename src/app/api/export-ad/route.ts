@@ -26,7 +26,8 @@ import { restoreSnapshot } from "./restore-snapshot";
 import { framesToSeconds } from "@/lib/types/timeline";
 import { resolveVideoDurationFrames } from "@/lib/voiceover/video-duration-policy";
 
-export const maxDuration = 800;
+// Vercel Hobby plan allows 1-300s for Serverless Functions.
+export const maxDuration = 300;
 
 const COMPOSITION_ID = "AdStudioExport";
 
