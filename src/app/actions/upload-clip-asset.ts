@@ -1,7 +1,6 @@
 "use server";
 
-import { mkdir, writeFile } from "node:fs/promises";
-import path from "node:path";
+import { savePublicMedia } from "@/lib/storage/public-media";
 
 export type UploadClipAssetResult =
   | { ok: true; publicUrl: string }
@@ -17,7 +16,6 @@ export async function uploadClipImageAction(
     return { ok: false, error: "No file uploaded." };
   }
 
-  const safeProject = projectId.replace(/[^a-zA-Z0-9_-]/g, "") || "project";
   const safeClip = clipId.replace(/[^a-zA-Z0-9_-]/g, "") || "clip";
 
   const ext =
@@ -31,13 +29,22 @@ export async function uploadClipImageAction(
     return { ok: false, error: "Image must be 12MB or smaller." };
   }
 
-  const dir = path.join(process.cwd(), "public", "media", safeProject);
-  await mkdir(dir, { recursive: true });
   const filename = `image-${safeClip}.${finalExt}`;
-  const full = path.join(dir, filename);
-  await writeFile(full, buf);
-
-  return { ok: true, publicUrl: `/media/${safeProject}/${filename}` };
+  const saved = await savePublicMedia({
+    projectId,
+    filename,
+    buffer: buf,
+    contentType:
+      finalExt === "png"
+        ? "image/png"
+        : finalExt === "webp"
+          ? "image/webp"
+          : finalExt === "gif"
+            ? "image/gif"
+            : "image/jpeg",
+  });
+  if (!saved.ok) return saved;
+  return { ok: true, publicUrl: saved.publicUrl };
 }
 
 /** Brand logo for Bottom Banner (stored next to other project media). */
@@ -50,8 +57,6 @@ export async function uploadBrandLogoAction(
     return { ok: false, error: "No file uploaded." };
   }
 
-  const safeProject = projectId.replace(/[^a-zA-Z0-9_-]/g, "") || "project";
-
   const ext =
     file.name.split(".").pop()?.toLowerCase().replace(/[^a-z0-9]/g, "") ||
     "png";
@@ -63,11 +68,20 @@ export async function uploadBrandLogoAction(
     return { ok: false, error: "Logo must be 6MB or smaller." };
   }
 
-  const dir = path.join(process.cwd(), "public", "media", safeProject);
-  await mkdir(dir, { recursive: true });
   const filename = `brand-logo.${finalExt}`;
-  const full = path.join(dir, filename);
-  await writeFile(full, buf);
-
-  return { ok: true, publicUrl: `/media/${safeProject}/${filename}` };
+  const saved = await savePublicMedia({
+    projectId,
+    filename,
+    buffer: buf,
+    contentType:
+      finalExt === "png"
+        ? "image/png"
+        : finalExt === "webp"
+          ? "image/webp"
+          : finalExt === "gif"
+            ? "image/gif"
+            : "image/jpeg",
+  });
+  if (!saved.ok) return saved;
+  return { ok: true, publicUrl: saved.publicUrl };
 }

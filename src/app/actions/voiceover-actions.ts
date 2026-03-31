@@ -1,8 +1,7 @@
 "use server";
 
-import { mkdir, writeFile } from "node:fs/promises";
-import path from "node:path";
 import { synthesizeMicrosoftEdgeTts } from "@/lib/services/microsoft-edge-tts";
+import { savePublicMedia } from "@/lib/storage/public-media";
 import { normalizeMasterScriptWhitespace } from "@/lib/voiceover/master-script-policy";
 
 export type GenerateVoiceoverResult =
@@ -48,8 +47,6 @@ export async function generateVoiceoverFromTimelineJson(
   projectId: string,
   timelineJson: string,
 ): Promise<GenerateVoiceoverResult> {
-  const safeProject = projectId.replace(/[^a-zA-Z0-9_-]/g, "") || "project";
-
   let clipsById: Record<string, ClipJson> = {};
   let websiteUrl = "";
   let masterScript = "";
@@ -125,16 +122,19 @@ export async function generateVoiceoverFromTimelineJson(
       voice: "en-US-GuyNeural",
     });
 
-    const dir = path.join(process.cwd(), "public", "media", safeProject);
-    await mkdir(dir, { recursive: true });
     const filename = "voice.mp3";
-    const full = path.join(dir, filename);
-    await writeFile(full, buffer);
-
-    const publicUrl = `/media/${safeProject}/${filename}`;
+    const saved = await savePublicMedia({
+      projectId,
+      filename,
+      buffer,
+      contentType: "audio/mpeg",
+    });
+    if (!saved.ok) {
+      return { ok: false, error: saved.error };
+    }
     return {
       ok: true,
-      publicUrl,
+      publicUrl: saved.publicUrl,
       durationSecEstimate: estimateDurationFromText(text),
     };
   } catch (e) {
