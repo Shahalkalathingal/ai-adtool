@@ -17,6 +17,7 @@ export const EditorRemotionPlayer = forwardRef<PlayerRef, object>(
     const tracks = useTimelineStore((s) => s.tracks);
     const clipsById = useTimelineStore((s) => s.clipsById);
     const setStudioPanel = useTimelineStore((s) => s.setStudioPanel);
+    const voiceoverSyncBusy = useTimelineStore((s) => s.voiceoverSyncBusy);
 
     const origin =
       typeof window !== "undefined" ? window.location.origin : "";
@@ -68,6 +69,13 @@ export const EditorRemotionPlayer = forwardRef<PlayerRef, object>(
               "0 25px 50px -12px rgb(0 0 0 / 0.65), 0 0 0 1px rgba(255,255,255,0.06)",
           }}
         />
+        {voiceoverSyncBusy ? (
+          <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-black/25 backdrop-blur-[2px]">
+            <div className="rounded-md border border-white/20 bg-black/45 px-3 py-2 text-[11px] font-medium text-white/90 shadow-[0_0_24px_rgba(34,197,94,0.25)]">
+              Syncing Timeline...
+            </div>
+          </div>
+        ) : null}
 
         <button
           type="button"

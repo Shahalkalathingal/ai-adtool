@@ -7,6 +7,8 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { exportFilenameForBrand } from "@/lib/remotion/build-ad-studio-input-props";
 import { useTimelineStore } from "@/lib/stores/timeline-store";
+import { framesToSeconds } from "@/lib/types/timeline";
+import { resolveVideoDurationFrames } from "@/lib/voiceover/video-duration-policy";
 
 type Phase = "processing" | "delivery" | "error";
 
@@ -225,6 +227,17 @@ export function ExportStudioModal({ open, onClose }: ExportStudioModalProps) {
     setStatusPhase("");
     setCelebrate(false);
 
+    const metadata = project.metadata as Record<string, unknown>;
+    const voiceoverDurationSec =
+      typeof metadata.voiceoverDurationSec === "number"
+        ? metadata.voiceoverDurationSec
+        : null;
+    const computedDurationInFrames = resolveVideoDurationFrames({
+      fps,
+      voiceoverDurationSec,
+      fallbackDurationSec: framesToSeconds(durationInFrames, fps),
+    });
+
     try {
       const res = await fetch("/api/export-ad", {
         method: "POST",
@@ -232,7 +245,7 @@ export function ExportStudioModal({ open, onClose }: ExportStudioModalProps) {
         signal: ac.signal,
         body: JSON.stringify({
           origin,
-          durationInFrames,
+          durationInFrames: computedDurationInFrames,
           fps,
           project,
           tracks,
@@ -292,12 +305,12 @@ export function ExportStudioModal({ open, onClose }: ExportStudioModalProps) {
     }
   }, [
     directorPlanApplied,
-    durationInFrames,
     fps,
     origin,
     project,
     tracks,
     clipsById,
+    durationInFrames,
   ]);
 
   const runExportRef = useRef(runExport);
@@ -490,9 +503,14 @@ export function ExportStudioModal({ open, onClose }: ExportStudioModalProps) {
                 >
                   Remotion + Vercel Sandbox
                 </a>
-                . Set{" "}
-                <span className="font-mono text-white/70">BLOB_READ_WRITE_TOKEN</span>
-                , and on Vercel run{" "}
+                . You need{" "}
+                <span className="font-mono text-white/70">BLOB_READ_WRITE_TOKEN</span>{" "}
+                for Blob, and for{" "}
+                <strong className="text-white/70">local dev</strong> also{" "}
+                <span className="font-mono text-white/70">VERCEL_OIDC_TOKEN</span> from{" "}
+                <span className="font-mono text-white/70">npx vercel link</span> +{" "}
+                <span className="font-mono text-white/70">npx vercel env pull</span>. On
+                Vercel, use{" "}
                 <span className="font-mono text-white/70">
                   {`npm run vercel:remotion-snapshot && npm run build`}
                 </span>

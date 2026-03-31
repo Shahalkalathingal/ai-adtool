@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import {
   Image as ImageIcon,
   Mic,
@@ -44,7 +45,10 @@ export function StudioShell({ projectId }: StudioShellProps) {
   const studioPanel = useTimelineStore((s) => s.studioPanel);
   const setStudioPanel = useTimelineStore((s) => s.setStudioPanel);
   const directorPlanApplied = useTimelineStore((s) => s.directorPlanApplied);
-  const navItems = directorPlanApplied ? NAV : NAV.filter((n) => n.id === "slideshow");
+  const navItems = useMemo(
+    () => (directorPlanApplied ? NAV : NAV.filter((n) => n.id === "slideshow")),
+    [directorPlanApplied],
+  );
 
   return (
     <div className="flex h-full min-h-0 min-w-0 w-full bg-sidebar/20">

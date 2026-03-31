@@ -32,6 +32,8 @@ import {
 import { framesToSeconds } from "@/lib/types/timeline";
 import { useTimelineStore } from "@/lib/stores/timeline-store";
 import { playSuccessChime } from "@/lib/ui/sfx";
+import { readAudioDurationSec } from "@/lib/audio/read-audio-duration";
+import { MASTER_VOICEOVER_MIN_WORDS } from "@/lib/voiceover/master-script-policy";
 import { cn } from "@/lib/utils";
 
 const laneAccent: Record<string, string> = {
@@ -297,8 +299,12 @@ export function MultiTrackTimeline({ projectId }: MultiTrackTimelineProps) {
   const setPlayheadFrame = useTimelineStore((s) => s.setPlayheadFrame);
   const setIsPlaying = useTimelineStore((s) => s.setIsPlaying);
   const setStudioPanel = useTimelineStore((s) => s.setStudioPanel);
+  const setSelectedClipId = useTimelineStore((s) => s.setSelectedClipId);
   const project = useTimelineStore((s) => s.project);
   const setVoiceoverAsset = useTimelineStore((s) => s.setVoiceoverAsset);
+  const beginVoiceoverSwap = useTimelineStore((s) => s.beginVoiceoverSwap);
+  const setVoiceoverSyncBusy = useTimelineStore((s) => s.setVoiceoverSyncBusy);
+  const voiceoverSyncBusy = useTimelineStore((s) => s.voiceoverSyncBusy);
   const [voBusy, setVoBusy] = useState(false);
   const [voiceLaneFlash, setVoiceLaneFlash] = useState(false);
   const [musicLaneFlash, setMusicLaneFlash] = useState(false);
@@ -311,7 +317,7 @@ export function MultiTrackTimeline({ projectId }: MultiTrackTimelineProps) {
       ? project.metadata.masterVoiceoverScript
       : "";
   const words = masterScript.trim().split(/\s+/).filter(Boolean).length;
-  const minWords = 75;
+  const minWords = MASTER_VOICEOVER_MIN_WORDS;
   const hasVoiceoverAudio =
     typeof project.metadata.voiceoverAudioUrl === "string" &&
     project.metadata.voiceoverAudioUrl.trim().length > 0;
@@ -360,19 +366,23 @@ export function MultiTrackTimeline({ projectId }: MultiTrackTimelineProps) {
 
   async function onGenerateFullVoiceover() {
     setVoBusy(true);
+    beginVoiceoverSwap();
     setStatusIndex(0);
     try {
       const state = useTimelineStore.getState();
       const json = JSON.stringify(serializeTimelineState(state));
       const res = await generateVoiceoverFromTimelineJson(projectId, json);
       if (!res.ok) {
+        setVoiceoverSyncBusy(false);
         toast.error("Voiceover failed", { description: res.error });
         return;
       }
-      setVoiceoverAsset(res.publicUrl, res.durationSecEstimate);
+      const measuredSec = await readAudioDurationSec(res.publicUrl);
+      setVoiceoverAsset(res.publicUrl, measuredSec ?? res.durationSecEstimate);
       toast.success("Full voiceover generated");
       playSuccessChime();
     } finally {
+      setVoiceoverSyncBusy(false);
       setVoBusy(false);
     }
   }
@@ -417,7 +427,7 @@ export function MultiTrackTimeline({ projectId }: MultiTrackTimelineProps) {
             variant="outline"
             size="sm"
             className="h-8 gap-1.5 border-border/80 bg-background/40 text-[11px] backdrop-blur-sm"
-            disabled={voBusy || words < minWords}
+            disabled={voBusy || voiceoverSyncBusy || words < minWords}
             onClick={() => void onGenerateFullVoiceover()}
           >
             {voBusy ? (
@@ -429,6 +439,13 @@ export function MultiTrackTimeline({ projectId }: MultiTrackTimelineProps) {
           </Button>
         </div>
       </div>
+      {words < minWords ? (
+        <p className="text-[11px] leading-relaxed text-amber-300/90">
+          Add at least {minWords} words so voiceover covers the full timeline, including the
+          end screen. Open <span className="font-medium text-foreground/90">Voice &amp; script</span>{" "}
+          to edit the master script.
+        </p>
+      ) : null}
 
       <ScrollArea className="max-h-[238px] w-full">
         <div className="min-w-[720px] space-y-0 pr-4">
@@ -466,7 +483,10 @@ export function MultiTrackTimeline({ projectId }: MultiTrackTimelineProps) {
           {/* Static overlay lanes (Bottom banner + QR code) to match the Studio reference. */}
           <button
             type="button"
-            onClick={() => setStudioPanel("bottomBanner")}
+            onClick={() => {
+              setSelectedClipId(null);
+              setStudioPanel("bottomBanner");
+            }}
             className={cn(
               "flex w-full border-b border-border/60 bg-muted/10 text-left",
               "border-l-2",
@@ -493,7 +513,10 @@ export function MultiTrackTimeline({ projectId }: MultiTrackTimelineProps) {
 
           <button
             type="button"
-            onClick={() => setStudioPanel("qr")}
+            onClick={() => {
+              setSelectedClipId(null);
+              setStudioPanel("qr");
+            }}
             className={cn(
               "flex w-full border-b border-border/60 bg-muted/10 text-left",
               "border-l-2",

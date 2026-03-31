@@ -47,6 +47,9 @@ export function buildTimelineFromDirectorPlan(
     sourceUrl?: string;
     contactHints?: ContactHints;
     pageIntel?: ScrapedPageIntel;
+    /** Neural Script Architect (or manual) full VO; overrides joined scene voiceovers. */
+    masterVoiceoverScript?: string;
+    adNiche?: string;
   },
 ): BuiltDirectorTimeline {
   const totalDuration = plan.totalDurationSec;
@@ -69,10 +72,19 @@ export function buildTimelineFromDirectorPlan(
   );
   const sb = plan.scrapedBrand;
 
-  const masterVoiceover = plan.scenes
+  const joinedSceneVoiceover = plan.scenes
     .map((s) => (typeof s.voiceover === "string" ? s.voiceover.trim() : ""))
     .filter(Boolean)
     .join(" ");
+  const masterVoiceover = (
+    typeof options?.masterVoiceoverScript === "string" &&
+    options.masterVoiceoverScript.trim()
+      ? options.masterVoiceoverScript
+      : joinedSceneVoiceover
+  )
+    .replace(/\s+/g, " ")
+    .replace(/\s+([,.;!?])/g, "$1")
+    .trim();
 
   const speechWeights = plan.scenes.map((s) =>
     voiceoverSpeechWeight(
@@ -244,10 +256,8 @@ export function buildTimelineFromDirectorPlan(
   const company =
     sb?.companyName ?? pi?.companyName ?? plan.adTitle;
   const phone = sb?.phoneNumber ?? ch?.phone ?? "";
-  const address =
-    sb?.cleanAddress ??
-    ch?.address ??
-    "";
+  // Hard rule: never use model-guessed address text; only validated scrape output.
+  const address = pi?.cleanAddress ?? ch?.address ?? "";
   const website =
     sb?.primaryDomain
       ? `https://${sb.primaryDomain.replace(/^https?:\/\//, "")}`
@@ -266,13 +276,16 @@ export function buildTimelineFromDirectorPlan(
       aspectRatio: "16:9",
       sceneCount: plan.scenes.length,
       showQrOverlay: true,
-      showFocusCardOverlay: true,
+      showFocusCardOverlay: false,
       highProtectionWatermark: false,
       musicMood: plan.musicMood,
       directorModel: "gemini-2.0-flash",
       sourceUrl: options?.sourceUrl,
       previewSubtitle: `${plan.scenes.length} scenes · ${plan.musicMood}`,
       masterVoiceoverScript: masterVoiceover,
+      masterScriptSource:
+        options?.masterVoiceoverScript?.trim() ? "neural-architect" : "director-scenes",
+      ...(options?.adNiche ? { adNiche: options.adNiche } : {}),
       brandDisplayName: company,
       phone,
       address,

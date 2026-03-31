@@ -22,7 +22,12 @@ import { serializeTimelineState } from "@/lib/timeline/serialize";
 import { framesToSeconds } from "@/lib/types/timeline";
 import { useTimelineStore } from "@/lib/stores/timeline-store";
 import { voiceVolumePctFromAudioProps } from "@/lib/audio/volume-pct";
+import { readAudioDurationSec } from "@/lib/audio/read-audio-duration";
 import { playSuccessChime } from "@/lib/ui/sfx";
+import {
+  MASTER_VOICEOVER_MAX_WORDS,
+  MASTER_VOICEOVER_MIN_WORDS,
+} from "@/lib/voiceover/master-script-policy";
 
 export function StudioVoiceTab() {
   const project = useTimelineStore((s) => s.project);
@@ -31,11 +36,17 @@ export function StudioVoiceTab() {
   const durationInFrames = useTimelineStore((s) => s.durationInFrames);
   const setMasterVoiceoverScript = useTimelineStore((s) => s.setMasterVoiceoverScript);
   const setVoiceoverAsset = useTimelineStore((s) => s.setVoiceoverAsset);
+  const beginVoiceoverSwap = useTimelineStore((s) => s.beginVoiceoverSwap);
+  const setVoiceoverSyncBusy = useTimelineStore((s) => s.setVoiceoverSyncBusy);
+  const voiceoverSyncBusy = useTimelineStore((s) => s.voiceoverSyncBusy);
   const tracks = useTimelineStore((s) => s.tracks);
   const clipsById = useTimelineStore((s) => s.clipsById);
   const updateClipProperty = useTimelineStore((s) => s.updateClipProperty);
   const [busy, setBusy] = useState(false);
   const [statusIndex, setStatusIndex] = useState(0);
+  const directorGenerationBusy = useTimelineStore((s) => s.directorGenerationBusy);
+  const [optimizerIdx, setOptimizerIdx] = useState(0);
+  const [updatePulse, setUpdatePulse] = useState(false);
 
   const masterScript =
     typeof project.metadata.masterVoiceoverScript === "string"
@@ -44,6 +55,10 @@ export function StudioVoiceTab() {
   const hasVoiceoverAudio =
     typeof project.metadata.voiceoverAudioUrl === "string" &&
     project.metadata.voiceoverAudioUrl.trim().length > 0;
+  const voiceoverSwapPulseAt =
+    typeof project.metadata.voiceoverSwapPulseAt === "number"
+      ? project.metadata.voiceoverSwapPulseAt
+      : 0;
   const brandPrimary =
     (typeof project.brandConfig.primaryColor === "string" &&
       project.brandConfig.primaryColor) ||
@@ -70,12 +85,20 @@ export function StudioVoiceTab() {
     ],
     [],
   );
+  const scriptOptimizerStatuses = useMemo(
+    () => [
+      "🧠 Analyzing brand sentiment...",
+      "⚖️ Balancing word count for 35s playback...",
+      "✍️ Crafting high-conversion hooks...",
+    ],
+    [],
+  );
 
   const chars = masterScript.length;
   const words = masterScript.trim().split(/\s+/).filter(Boolean).length;
   const estimatedSec = words > 0 ? Math.max(2, words / 2.4) : 0;
-  const maxWords = 90;
-  const minWords = 75;
+  const maxWords = MASTER_VOICEOVER_MAX_WORDS;
+  const minWords = MASTER_VOICEOVER_MIN_WORDS;
 
   const sentences = useMemo(() => {
     return masterScript
@@ -100,21 +123,41 @@ export function StudioVoiceTab() {
     return () => window.clearInterval(id);
   }, [busy, statuses.length]);
 
+  useEffect(() => {
+    if (!directorGenerationBusy) return;
+    setOptimizerIdx(0);
+    const id = window.setInterval(() => {
+      setOptimizerIdx((i) => (i + 1) % scriptOptimizerStatuses.length);
+    }, 1600);
+    return () => window.clearInterval(id);
+  }, [directorGenerationBusy, scriptOptimizerStatuses.length]);
+
+  useEffect(() => {
+    if (!voiceoverSwapPulseAt) return;
+    setUpdatePulse(true);
+    const id = window.setTimeout(() => setUpdatePulse(false), 700);
+    return () => window.clearTimeout(id);
+  }, [voiceoverSwapPulseAt]);
+
   async function onGenerateFullVoiceover() {
     setBusy(true);
+    beginVoiceoverSwap();
     setStatusIndex(0);
     try {
       const state = useTimelineStore.getState();
       const json = JSON.stringify(serializeTimelineState(state));
       const res = await generateVoiceoverFromTimelineJson(project.id ?? "draft", json);
       if (!res.ok) {
+        setVoiceoverSyncBusy(false);
         toast.error("Voiceover failed", { description: res.error });
         return;
       }
-      setVoiceoverAsset(res.publicUrl, res.durationSecEstimate);
+      const measuredSec = await readAudioDurationSec(res.publicUrl);
+      setVoiceoverAsset(res.publicUrl, measuredSec ?? res.durationSecEstimate);
       toast.success("Full voiceover generated");
       playSuccessChime();
     } finally {
+      setVoiceoverSyncBusy(false);
       setBusy(false);
     }
   }
@@ -122,13 +165,20 @@ export function StudioVoiceTab() {
   return (
     <Card className="relative overflow-hidden border-border/60 bg-card/40 shadow-none">
       <CardHeader className="space-y-1 pb-2">
-        <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+        <CardTitle className="flex flex-wrap items-center gap-2 text-sm font-semibold">
           <Mic className="size-4 text-primary" />
           Voice &amp; script
+          {directorGenerationBusy ? (
+            <Badge variant="outline" className="border-primary/40 text-[10px] text-primary">
+              Script Optimizer
+            </Badge>
+          ) : null}
         </CardTitle>
         <CardDescription className="text-[11px] leading-relaxed">
           Master script mode: one premium script block powers a single full-length
-          voiceover track.
+          voiceover track. New timelines use the{" "}
+          <span className="font-medium text-foreground/90">Neural Script Architect</span>{" "}
+          (75–90 words, hook–value–CTA) aligned to your niche and scraped URL.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -151,24 +201,24 @@ export function StudioVoiceTab() {
           <Label className="text-[11px] uppercase">Master script</Label>
           <Textarea
             value={masterScript}
+            disabled={directorGenerationBusy}
             onChange={(e) => {
-              const raw = e.target.value;
-              const clipped = raw
-                .split(/\s+/)
-                .slice(0, maxWords)
-                .join(" ")
-                .replace(/\s+([,.;!?])/g, "$1");
-              setMasterVoiceoverScript(clipped);
+              setMasterVoiceoverScript(e.target.value);
             }}
             rows={11}
             placeholder="Write one immersive sentence per scene flow (hook, problem, solution, benefit, proof, CTA)..."
-            className="resize-none border-border/80 bg-background/40 text-sm leading-relaxed backdrop-blur-sm"
+            className="resize-none border-border/80 bg-background/40 text-sm leading-relaxed backdrop-blur-sm disabled:opacity-60"
           />
         </div>
         <Button
           type="button"
-          className="w-full gap-2"
-          disabled={busy || words < minWords}
+          className={[
+            "w-full gap-2 transition-[box-shadow,border-color] duration-200",
+            updatePulse
+              ? "border-emerald-300/70 shadow-[0_0_0_1px_rgba(134,239,172,0.7),0_0_24px_rgba(74,222,128,0.55)]"
+              : "",
+          ].join(" ")}
+          disabled={busy || voiceoverSyncBusy || directorGenerationBusy || words < minWords}
           onClick={() => void onGenerateFullVoiceover()}
         >
           {busy ? <Loader2 className="size-4 animate-spin" /> : <Mic className="size-4" />}
@@ -200,8 +250,9 @@ export function StudioVoiceTab() {
           </p>
         </div>
         {words < minWords ? (
-          <p className="text-[11px] text-amber-300/90">
-            Add at least {minWords} words so voiceover covers full timeline, including end screen.
+          <p className="text-[11px] leading-relaxed text-amber-300/90">
+            Add at least {minWords} words so voiceover covers the full timeline, including the
+            end screen.
           </p>
         ) : null}
         {sentences.length > 0 ? (
@@ -225,12 +276,12 @@ export function StudioVoiceTab() {
         ) : null}
       </CardContent>
       <AnimatePresence>
-        {busy ? (
+        {directorGenerationBusy || busy || voiceoverSyncBusy ? (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 bg-background/20 backdrop-blur-md"
+            className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-background/20 backdrop-blur-md"
           >
             <div className="flex items-end gap-1.5">
               {[0, 1, 2, 3, 4, 5, 6].map((i) => (
@@ -253,14 +304,33 @@ export function StudioVoiceTab() {
                 />
               ))}
             </div>
+            {directorGenerationBusy ? (
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-primary">
+                Script Optimizer
+              </p>
+            ) : voiceoverSyncBusy ? (
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-primary">
+                Syncing Timeline...
+              </p>
+            ) : null}
             <motion.p
-              key={statusIndex}
+              key={
+                directorGenerationBusy
+                  ? `opt-${optimizerIdx}`
+                  : voiceoverSyncBusy
+                    ? "vo-sync"
+                    : `vo-${statusIndex}`
+              }
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -6 }}
-              className="text-center text-xs font-medium text-foreground/90"
+              className="max-w-[240px] text-center text-xs font-medium text-foreground/90"
             >
-              {statuses[statusIndex]}
+              {directorGenerationBusy
+                ? scriptOptimizerStatuses[optimizerIdx]
+                : voiceoverSyncBusy
+                  ? "Calibrating scene timing and outro hold..."
+                : statuses[statusIndex]}
             </motion.p>
           </motion.div>
         ) : null}

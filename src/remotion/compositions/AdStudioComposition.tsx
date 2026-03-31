@@ -59,6 +59,16 @@ export type AdStudioCompositionProps = {
     endScreenCtaBg1?: string;
     endScreenCtaBg2?: string;
     endScreenCtaTextColor?: string;
+    bannerBrandNameColor?: string;
+    bannerDetailColor?: string;
+    bannerPhoneColor?: string;
+    bannerPhoneScale?: number;
+    headerBrandNameColor?: string;
+    headerSloganColor?: string;
+    headerBrandScale?: number;
+    headerLogoScale?: number;
+    qrOutlineColor?: string;
+    qrOutlineWidth?: number;
   };
   voiceoverSrc: string | null;
   /** Stretch/shrink VO so it matches final video duration. */
@@ -168,6 +178,11 @@ function metaString(m: Record<string, unknown>, key: string): string {
 
 function metaBool(m: Record<string, unknown>, key: string): boolean {
   return m[key] === true;
+}
+
+function metaNumber(m: Record<string, unknown>, key: string): number | null {
+  const v = m[key];
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
 }
 
 function BrandWatermarkTile({
@@ -454,20 +469,26 @@ function QrCorner({
   value,
   visible,
   brandPrimary,
+  outlineColor,
+  outlineWidth,
 }: {
   value: string;
   visible: boolean;
   brandPrimary: string;
+  outlineColor?: string;
+  outlineWidth?: number;
 }) {
   if (!visible || !value.trim()) return null;
   const size = Math.round(72 * 1.3);
+  const strokeColor = outlineColor || brandPrimary;
+  const strokeWidth = Math.max(0, Math.min(16, outlineWidth ?? 5));
   return (
     <div
       style={{
         background: "white",
         padding: 10,
         borderRadius: 12,
-        border: `5px solid ${brandPrimary}`,
+        border: `${strokeWidth}px solid ${strokeColor}`,
         boxShadow:
           "0 0 0 2px rgba(255,255,255,0.95), 0 14px 40px rgba(0,0,0,0.5)",
       }}
@@ -484,6 +505,12 @@ function GlobalBrandHeader({
   slogan,
   globalFrame,
   handoffOpacity = 1,
+  showHeaderOverlay,
+  headerOverlayStrength,
+  headerBrandNameColor,
+  headerSloganColor,
+  headerBrandScale,
+  headerLogoScale,
 }: {
   origin: string;
   logoUrl: string;
@@ -491,6 +518,12 @@ function GlobalBrandHeader({
   slogan: string;
   globalFrame: number;
   handoffOpacity?: number;
+  showHeaderOverlay: boolean;
+  headerOverlayStrength: number;
+  headerBrandNameColor: string;
+  headerSloganColor: string;
+  headerBrandScale: number;
+  headerLogoScale: number;
 }) {
   const headerOpacity =
     interpolate(globalFrame, [0, 14], [0, 1], {
@@ -521,8 +554,11 @@ function GlobalBrandHeader({
           style={{
             position: "absolute",
             inset: 0,
-            background:
-              "linear-gradient(90deg, rgba(0,0,0,0.82) 0%, rgba(0,0,0,0.5) 42%, rgba(0,0,0,0.08) 72%, rgba(0,0,0,0) 100%)",
+            background: showHeaderOverlay
+              ? `linear-gradient(90deg, rgba(0,0,0,${0.82 * headerOverlayStrength}) 0%, rgba(0,0,0,${
+                  0.5 * headerOverlayStrength
+                }) 42%, rgba(0,0,0,${0.08 * headerOverlayStrength}) 72%, rgba(0,0,0,0) 100%)`
+              : "transparent",
             pointerEvents: "none",
           }}
         />
@@ -538,8 +574,8 @@ function GlobalBrandHeader({
         >
           <div
             style={{
-              width: 104,
-              height: 104,
+              width: 104 * headerLogoScale,
+              height: 104 * headerLogoScale,
               flexShrink: 0,
               borderRadius: 18,
               background: "rgba(255,255,255,0.96)",
@@ -551,7 +587,7 @@ function GlobalBrandHeader({
                 "0 10px 40px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.08)",
             }}
           >
-            <div style={{ width: 90, height: 90 }}>
+            <div style={{ width: 90 * headerLogoScale, height: 90 * headerLogoScale }}>
               <SafeBrandLogo
                 src={logoUrl}
                 origin={origin}
@@ -562,9 +598,11 @@ function GlobalBrandHeader({
           <div style={{ minWidth: 0, flex: 1, maxWidth: "72%" }}>
             <div
               style={{
-                color: "#fafafa",
+                color: headerBrandNameColor,
                 fontWeight: 800,
-                fontSize: Math.min(34, 22 + 280 / Math.max(brandName.length, 10)),
+                fontSize:
+                  Math.min(34, 22 + 280 / Math.max(brandName.length, 10)) *
+                  headerBrandScale,
                 letterSpacing: "-0.03em",
                 lineHeight: 1.1,
                 textShadow: "0 4px 24px rgba(0,0,0,0.75)",
@@ -576,9 +614,9 @@ function GlobalBrandHeader({
               <div
                 style={{
                   marginTop: 6,
-                  color: "rgba(250,250,250,0.9)",
+                  color: headerSloganColor,
                   fontWeight: 600,
-                  fontSize: 16,
+                  fontSize: 16 * headerBrandScale,
                   letterSpacing: "0.02em",
                   lineHeight: 1.35,
                   textShadow: "0 2px 16px rgba(0,0,0,0.65)",
@@ -880,6 +918,11 @@ function PersistentBottomBanner({
   fps,
   handoffOpacity,
   showFocusCardOverlay,
+  bannerOverlayStrength,
+  brandNameColor,
+  brandDetailColor,
+  brandPhoneColor,
+  brandPhoneScale,
   brandName,
   address,
   website,
@@ -891,6 +934,11 @@ function PersistentBottomBanner({
   fps: number;
   handoffOpacity: number;
   showFocusCardOverlay: boolean;
+  bannerOverlayStrength: number;
+  brandNameColor: string;
+  brandDetailColor: string;
+  brandPhoneColor: string;
+  brandPhoneScale: number;
   brandName: string;
   address: string;
   website: string;
@@ -968,20 +1016,21 @@ function PersistentBottomBanner({
               gap: 24,
               width: "100%",
               boxSizing: "border-box",
-              paddingTop: "min(26vh, 260px)",
+              paddingTop: "min(6vh, 58px)",
               paddingRight: "3.5%",
               paddingBottom: "max(14px, 1.2%)",
               paddingLeft: "3.5%",
               background: showFocusCardOverlay
-                ? "linear-gradient(180deg, rgba(0,0,0,0.52) 0%, rgba(0,0,0,0.42) 38%, rgba(0,0,0,0.2) 72%, rgba(0,0,0,0) 100%)"
+                ? `linear-gradient(180deg, rgba(0,0,0,${0.32 * bannerOverlayStrength}) 0%, rgba(0,0,0,${
+                    0.26 * bannerOverlayStrength
+                  }) 38%, rgba(0,0,0,${
+                    0.18 * bannerOverlayStrength
+                  }) 72%, rgba(0,0,0,0) 100%)`
                 : "transparent",
               backdropFilter: showFocusCardOverlay ? "blur(64px)" : "none",
               WebkitBackdropFilter: showFocusCardOverlay ? "blur(64px)" : "none",
-              borderTop: showFocusCardOverlay
-                ? "1px solid rgba(255,255,255,0.2)"
-                : "none",
               boxShadow: showFocusCardOverlay
-                ? "inset 0 1px 0 rgba(255,255,255,0.12), 0 -52px 160px rgba(0,0,0,0.58), 0 -18px 64px rgba(0,0,0,0.4)"
+                ? "0 -52px 160px rgba(0,0,0,0.58), 0 -18px 64px rgba(0,0,0,0.4)"
                 : "none",
             }}
           >
@@ -996,9 +1045,9 @@ function PersistentBottomBanner({
             >
               <div
                 style={{
-                  color: "#fafafa",
+                  color: brandNameColor,
                   fontWeight: 800,
-                  fontSize: 28,
+                  fontSize: 28 * brandPhoneScale,
                   letterSpacing: "-0.02em",
                   lineHeight: 1.2,
                   fontFamily: HEADLINE_FONT,
@@ -1009,7 +1058,7 @@ function PersistentBottomBanner({
               {address ? (
                 <div
                   style={{
-                    color: "rgba(250,250,250,0.78)",
+                    color: brandDetailColor,
                     fontSize: luxDetailFs,
                     fontFamily: LUX_DETAIL_FONT,
                     fontWeight: 500,
@@ -1037,7 +1086,7 @@ function PersistentBottomBanner({
               {website ? (
                 <div
                   style={{
-                    color: "rgba(250,250,250,0.74)",
+                    color: brandDetailColor,
                     fontSize: luxDetailFs,
                     fontFamily: LUX_DETAIL_FONT,
                     fontWeight: 500,
@@ -1089,9 +1138,9 @@ function PersistentBottomBanner({
                 </span>
                 <div
                   style={{
-                    color: "#fafafa",
+                      color: brandPhoneColor,
                     fontWeight: 900,
-                    fontSize: luxPhoneFs,
+                      fontSize: luxPhoneFs * brandPhoneScale,
                     fontFamily: LUX_DETAIL_FONT,
                     letterSpacing: "0.04em",
                     textShadow: "0 6px 28px rgba(0,0,0,0.55)",
@@ -1178,6 +1227,37 @@ export function AdStudioComposition({
     metaString(metadata, "tagline") ||
     endTagline ||
     metaString(metadata, "previewSubtitle");
+
+  const bannerOverlayStrength = Math.max(
+    0,
+    Math.min(1, metaNumber(metadata, "bannerOverlayStrength") ?? 1),
+  );
+  const brandNameColor = brandKit.bannerBrandNameColor || "#fafafa";
+  const brandDetailColor = brandKit.bannerDetailColor || "rgba(250,250,250,0.78)";
+  const brandPhoneColor = brandKit.bannerPhoneColor || brandSecondary;
+  const brandPhoneScale = Math.max(
+    0.8,
+    Math.min(1.4, brandKit.bannerPhoneScale ?? 1),
+  );
+  const showHeaderOverlay = metadata.showHeaderOverlay !== false;
+  const headerOverlayStrength = Math.max(
+    0,
+    Math.min(1, metaNumber(metadata, "headerOverlayStrength") ?? 1),
+  );
+  const headerBrandNameColor = brandKit.headerBrandNameColor || "#fafafa";
+  const headerSloganColor = brandKit.headerSloganColor || "rgba(250,250,250,0.9)";
+  const headerBrandScale = Math.max(
+    0.8,
+    Math.min(1.4, brandKit.headerBrandScale ?? 1),
+  );
+  const headerLogoScale = Math.max(0.8, Math.min(1.4, brandKit.headerLogoScale ?? 1));
+  const qrOutlineColor = brandKit.qrOutlineColor || brandPrimary;
+  const qrOutlineWidth = Math.max(0, Math.min(16, brandKit.qrOutlineWidth ?? 5));
+  const showSceneVignetteOverlay = metadata.showSceneVignetteOverlay !== false;
+  const sceneVignetteStrength = Math.max(
+    0,
+    Math.min(1, metaNumber(metadata, "sceneVignetteStrength") ?? 1),
+  );
 
   const qrData =
     (qrValue && qrValue.trim()) ||
@@ -1279,26 +1359,16 @@ export function AdStudioComposition({
             crossSec={crossSec}
             endStartSec={endStartForScenes}
           />
-          <AbsoluteFill
-            style={{
-              background:
-                "linear-gradient(180deg, rgba(6,6,8,0.06) 0%, rgba(6,6,8,0.12) 50%, rgba(6,6,8,0.22) 100%)",
-            }}
-          />
-          <AbsoluteFill
-            style={{
-              backgroundColor: brandPrimary,
-              opacity: 0.02,
-              pointerEvents: "none",
-            }}
-          />
-          <AbsoluteFill
-            style={{
-              pointerEvents: "none",
-              background:
-                "radial-gradient(ellipse 88% 78% at 50% 46%, rgba(0,0,0,0) 45%, rgba(0,0,0,0.08) 75%, rgba(0,0,0,0.22) 100%)",
-            }}
-          />
+          {showSceneVignetteOverlay ? (
+            <AbsoluteFill
+              style={{
+                pointerEvents: "none",
+                background: `radial-gradient(ellipse 88% 78% at 50% 46%, rgba(0,0,0,0) 45%, rgba(0,0,0,${
+                  0.08 * sceneVignetteStrength
+                }) 75%, rgba(0,0,0,${0.22 * sceneVignetteStrength}) 100%)`,
+              }}
+            />
+          ) : null}
           {highProtectionWatermark ? (
             <BrandWatermarkTile origin={origin} logoUrl={logoUrl} />
           ) : null}
@@ -1332,45 +1402,13 @@ export function AdStudioComposition({
         slogan={brandSlogan}
         globalFrame={frame}
         handoffOpacity={headerHandoffFade}
+        showHeaderOverlay={showHeaderOverlay}
+        headerOverlayStrength={headerOverlayStrength}
+        headerBrandNameColor={headerBrandNameColor}
+        headerSloganColor={headerSloganColor}
+        headerBrandScale={headerBrandScale}
+        headerLogoScale={headerLogoScale}
       />
-
-      {!onEndCard && captionText ? (
-        <AbsoluteFill
-          style={{
-            pointerEvents: "none",
-            justifyContent: "flex-end",
-            alignItems: "stretch",
-          }}
-        >
-          <div
-            style={{
-              position: "absolute",
-              left: 0,
-              right: 0,
-              bottom: "calc(min(26vh, 260px) + 168px)",
-              paddingLeft: "4%",
-              paddingRight: "4%",
-              textAlign: "center",
-              opacity: captionOpacity,
-            }}
-          >
-            <span
-              style={{
-                fontFamily: HEADLINE_FONT,
-                fontSize: 13,
-                fontWeight: 600,
-                letterSpacing: "0.2em",
-                textTransform: "uppercase",
-                color: "rgba(255,255,255,0.93)",
-                textShadow: "0 2px 14px rgba(0,0,0,0.7)",
-                lineHeight: 1.4,
-              }}
-            >
-              {captionText}
-            </span>
-          </div>
-        </AbsoluteFill>
-      ) : null}
 
       {!onEndCard ? (
         <AbsoluteFill
@@ -1386,6 +1424,8 @@ export function AdStudioComposition({
             value={qrData}
             visible={showQrOverlay}
             brandPrimary={brandPrimary}
+            outlineColor={qrOutlineColor}
+            outlineWidth={qrOutlineWidth}
           />
         </AbsoluteFill>
       ) : null}
@@ -1395,6 +1435,11 @@ export function AdStudioComposition({
         fps={fps}
         handoffOpacity={bannerHandoffFade}
         showFocusCardOverlay={showFocusCardOverlay}
+        bannerOverlayStrength={bannerOverlayStrength}
+        brandNameColor={brandNameColor}
+        brandDetailColor={brandDetailColor}
+        brandPhoneColor={brandPhoneColor}
+        brandPhoneScale={brandPhoneScale}
         brandName={brandName}
         address={address}
         website={website}

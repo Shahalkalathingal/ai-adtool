@@ -82,9 +82,78 @@ function stripMarkdownNoise(line: string): string {
     .trim();
 }
 
+function normalizeAddressLine(line: string): string {
+  return line
+    .replace(/\s*\|\s*/g, ", ")
+    .replace(/\s{2,}/g, " ")
+    .replace(/\s*,\s*/g, ", ")
+    .replace(/,\s*,+/g, ", ")
+    .trim();
+}
+
+function isLikelyPhysicalAddress(line: string): boolean {
+  const l = normalizeAddressLine(line);
+  if (!l || l.length < 14 || l.length > 220) return false;
+
+  // Reject URLs / link-like junk / social handles.
+  if (/(https?:\/\/|www\.|@|\.com\b|\.net\b|\.org\b)/i.test(l)) return false;
+  if (/[<>{}[\]]/.test(l)) return false;
+
+  // Needs a street number + street suffix.
+  const hasStreetNumber = /\b\d{1,6}\b/.test(l);
+  const hasStreetSuffix =
+    /\b(street|st\.?|avenue|ave\.?|road|rd\.?|drive|dr\.?|lane|ln\.?|boulevard|blvd\.?|court|ct\.?|circle|cir\.?|way|place|pl\.?|parkway|pkwy\.?|highway|hwy\.?|suite|ste\.?|unit|floor|fl\.?)\b/i.test(
+      l,
+    );
+  if (!hasStreetNumber || !hasStreetSuffix) return false;
+
+  // Needs region marker: US state code + zip OR common region keywords.
+  const hasStateZip = /\b[A-Z]{2}\s+\d{5}(?:-\d{4})?\b/.test(l);
+  const hasPostalCode = /\b\d{5}(?:-\d{4})?\b/.test(l);
+  const hasRegionWord =
+    /\b(usa|united states|canada|uk|united kingdom|australia)\b/i.test(l);
+  if (!(hasStateZip || (hasPostalCode && /,/.test(l)) || hasRegionWord)) {
+    return false;
+  }
+
+  return true;
+}
+
 function extractPrimaryDomain(sourceUrl: string): string | undefined {
   try {
     return new URL(sourceUrl).hostname.replace(/^www\./, "");
+  } catch {
+    return undefined;
+  }
+}
+
+function inferLogoFromMetadata(
+  metadata: Record<string, unknown> | undefined,
+): string | undefined {
+  if (!metadata) return undefined;
+  const candidates: unknown[] = [];
+  for (const key of Object.keys(metadata)) {
+    if (/logo/i.test(key)) {
+      candidates.push(metadata[key]);
+    }
+  }
+  const flat = candidates
+    .flatMap((v) => {
+      if (typeof v === "string") return [v];
+      if (Array.isArray(v)) return v;
+      return [];
+    })
+    .filter((v): v is string => typeof v === "string" && v.trim().length > 8);
+  const https = flat.find((u) => /^https?:\/\//i.test(u.trim()));
+  return https ?? flat[0];
+}
+
+function fallbackLogoForDomain(sourceUrl: string): string | undefined {
+  try {
+    const u = new URL(sourceUrl);
+    const origin = `${u.protocol}//${u.host}`;
+    // Prefer a common logo path over bare favicon when possible.
+    return `${origin}/favicon.ico`;
   } catch {
     return undefined;
   }
@@ -96,15 +165,16 @@ function extractPrimaryDomain(sourceUrl: string): string | undefined {
 function extractCleanAddress(markdown: string): string | undefined {
   const lines = markdown.split("\n").map((l) => stripMarkdownNoise(l));
   for (const line of lines) {
-    if (line.length < 20 || line.length > 280) continue;
-    if (
-      /\d{5}(-\d{4})?\b/.test(line) &&
-      /(road|rd\.?|street|st\.?|avenue|suite|ste\.?|drive|dr\.?|blvd|ne|nw|se|sw|va|ca|ny|tx|fl)/i.test(
-        line,
-      )
-    ) {
-      return line;
-    }
+    const normalized = normalizeAddressLine(line);
+    if (!isLikelyPhysicalAddress(normalized)) continue;
+    return normalized;
+  }
+
+  // Some sites split street and city/state/zip across two lines.
+  for (let i = 0; i < lines.length - 1; i += 1) {
+    const pair = normalizeAddressLine(`${lines[i]}, ${lines[i + 1]}`);
+    if (!isLikelyPhysicalAddress(pair)) continue;
+    return pair;
   }
   return undefined;
 }
@@ -161,13 +231,18 @@ function buildPageIntel(
     typeof metadata?.title === "string" ? metadata.title : undefined;
 
   let logoUrl: string | undefined;
-  if (ogImage && !/banner|hero|wide/i.test(ogImage)) {
+  const metaLogo = inferLogoFromMetadata(metadata);
+  if (metaLogo && /^https?:\/\//i.test(metaLogo)) {
+    logoUrl = metaLogo;
+  } else if (ogImage) {
+    // Prefer og:image even if it might be a hero — better something brand-related than nothing.
     logoUrl = ogImage;
-  } else {
-    const smallSquare = candidates.find((u) =>
-      /logo|mark|symbol/i.test(u),
+  }
+  if (!logoUrl) {
+    const fromBody = candidates.find((u) =>
+      /logo|mark|symbol|brand/i.test(u.toLowerCase()),
     );
-    logoUrl = smallSquare ?? candidates[0];
+    logoUrl = fromBody ?? candidates[0] ?? fallbackLogoForDomain(sourceUrl);
   }
 
   const primaryDomain = extractPrimaryDomain(sourceUrl);

@@ -43,6 +43,7 @@ async function main() {
     console.log("[create-remotion-snapshot] Bundling Remotion…");
     bundleRemotion();
     console.log("[create-remotion-snapshot] Copying bundle into sandbox…");
+    await sandbox.mkDir("remotion-bundle");
     await addBundleToSandbox({ sandbox, bundleDir: ".remotion" });
     console.log("[create-remotion-snapshot] Taking snapshot…");
     const snapshot = await sandbox.snapshot({ expiration: 0 });

@@ -74,7 +74,7 @@ export function buildAdStudioInputProps(
     brandPrimary: bc.primaryColor,
     brandSecondary: bc.secondaryColor,
     showQrOverlay: meta.showQrOverlay !== false,
-    showFocusCardOverlay: meta.showFocusCardOverlay !== false,
+    showFocusCardOverlay: meta.showFocusCardOverlay === true,
     qrValue: website.trim() || String(meta.websiteUrl ?? ""),
     brandKit: {
       companyName:
@@ -99,6 +99,38 @@ export function buildAdStudioInputProps(
           ? bc.endScreenCtaTextColor
           : "#0a0a0a",
       tagline: typeof bc.tagline === "string" ? bc.tagline : "",
+      bannerBrandNameColor:
+        typeof bc.bannerBrandNameColor === "string"
+          ? bc.bannerBrandNameColor
+          : "#fafafa",
+      bannerDetailColor:
+        typeof bc.bannerDetailColor === "string"
+          ? bc.bannerDetailColor
+          : "#fafafa",
+      bannerPhoneColor:
+        typeof bc.bannerPhoneColor === "string"
+          ? bc.bannerPhoneColor
+          : bc.secondaryColor,
+      bannerPhoneScale:
+        typeof bc.bannerPhoneScale === "number" ? bc.bannerPhoneScale : 1,
+      headerBrandNameColor:
+        typeof bc.headerBrandNameColor === "string"
+          ? bc.headerBrandNameColor
+          : "#fafafa",
+      headerSloganColor:
+        typeof bc.headerSloganColor === "string"
+          ? bc.headerSloganColor
+          : "#fafafa",
+      headerBrandScale:
+        typeof bc.headerBrandScale === "number" ? bc.headerBrandScale : 1,
+      headerLogoScale:
+        typeof bc.headerLogoScale === "number" ? bc.headerLogoScale : 1,
+      qrOutlineColor:
+        typeof bc.qrOutlineColor === "string"
+          ? bc.qrOutlineColor
+          : bc.primaryColor,
+      qrOutlineWidth:
+        typeof bc.qrOutlineWidth === "number" ? bc.qrOutlineWidth : 5,
     },
     voiceoverSrc,
     voiceoverRate,

@@ -9,7 +9,7 @@ export const defaultAdStudioExportInputProps: AdStudioExportInputProps = {
   brandPrimary: "#9333ea",
   brandSecondary: "#0ea5e9",
   showQrOverlay: true,
-  showFocusCardOverlay: true,
+  showFocusCardOverlay: false,
   qrValue: "",
   brandKit: {
     companyName: "",

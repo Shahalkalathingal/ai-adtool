@@ -24,6 +24,7 @@ import {
   type TimelineState,
   type TrackTimelineState,
 } from "@/lib/types/timeline";
+import { resolveVideoDurationSec } from "@/lib/voiceover/video-duration-policy";
 
 const DEFAULT_FPS = 30;
 
@@ -130,20 +131,20 @@ function fitScenesToDuration(state: TimelineState, targetSec: number) {
     .sort((a, b) => a.startTime - b.startTime);
   if (visuals.length === 0) return;
 
-  const oldTotal = visuals.reduce((sum, v) => sum + Math.max(0.01, v.duration), 0);
-  if (oldTotal <= 0) return;
-  const scale = targetSec / oldTotal;
+  const sceneCount = visuals.length;
+  if (sceneCount <= 0) return;
+  const targetFrames = Math.max(1, Math.ceil(targetSec * state.fps));
+  const perSceneFrames = Math.max(1, Math.floor(targetFrames / sceneCount));
   let cursorFrames = 0;
 
   visuals.forEach((vis, idx) => {
     const si = vis.content?.sceneIndex;
     if (typeof si !== "number") return;
     const startSec = framesToSeconds(cursorFrames, state.fps);
-    const rawDur = vis.duration * scale;
     const durFrames =
       idx === visuals.length - 1
-        ? Math.max(1, secondsToFrames(targetSec, state.fps) - cursorFrames)
-        : Math.max(1, secondsToFrames(rawDur, state.fps));
+        ? Math.max(1, targetFrames - cursorFrames)
+        : perSceneFrames;
     const durSec = framesToSeconds(durFrames, state.fps);
     const grouped = findClipsForSceneIndex(state.tracks, state.clipsById, si, [
       "visual",
@@ -385,7 +386,7 @@ export function createInitialTimeline(projectId: string): TimelineState {
         brandDisplayName: "",
         logoUrl: "",
         showQrOverlay: true,
-        showFocusCardOverlay: true,
+        showFocusCardOverlay: false,
         highProtectionWatermark: false,
         selectedMusicPresetId: "none",
         masterVoiceoverScript: "",
@@ -411,6 +412,8 @@ export function createInitialTimeline(projectId: string): TimelineState {
     isPlaying: false,
     selectedClipId: null,
     directorPlanApplied: false,
+    directorGenerationBusy: false,
+    voiceoverSyncBusy: false,
     studioPanel: "slideshow",
  };
 }
@@ -459,10 +462,14 @@ type TimelineActions = {
   /** Moves clip to a new start time (seconds), clamped to timeline length. */
   moveClip: (clipId: string, startTime: number) => void;
   applyRefinementPatch: (patch: RefinementPatch) => void;
-  /** Set generated VO asset URL on all voiceover clips + project metadata. */
-  setVoiceoverAsset: (publicUrl: string, estimateSec?: number) => void;
+  /** Set generated VO asset URL + apply shared duration policy (VO + 3.5s, min 32s). */
+  setVoiceoverAsset: (publicUrl: string, voiceoverDurationSec?: number) => void;
+  /** Remove current VO URL/transcript and enter syncing state before regeneration. */
+  beginVoiceoverSwap: () => void;
+  setVoiceoverSyncBusy: (busy: boolean) => void;
   setMasterVoiceoverScript: (script: string) => void;
   resetForProject: (projectId: string) => void;
+  setDirectorGenerationBusy: (busy: boolean) => void;
   /** Replace timeline with a Gemini + Firecrawl director plan (30s+ multi-track). */
   hydrateFromDirectorPlan: (
     plan: DirectorPlan,
@@ -471,6 +478,8 @@ type TimelineActions = {
       sourceUrl?: string;
       contactHints?: ContactHints;
       pageIntel?: ScrapedPageIntel;
+      masterVoiceoverScript?: string;
+      adNiche?: string;
     },
   ) => void;
 };
@@ -799,19 +808,21 @@ export const useTimelineStore = create<TimelineStore>()(
         relayoutEndScreen(state);
       }),
 
-    setVoiceoverAsset: (publicUrl, estimateSec) =>
+    setVoiceoverAsset: (publicUrl, voiceoverDurationSec) =>
       set((state) => {
         ensureSingleVoiceClip(state);
-        const targetSec =
-          typeof estimateSec === "number" && estimateSec > 1
-            ? estimateSec
-            : framesToSeconds(state.durationInFrames, state.fps);
+        const currentSec = framesToSeconds(state.durationInFrames, state.fps);
+        const targetSec = resolveVideoDurationSec({
+          voiceoverDurationSec,
+          fallbackDurationSec: currentSec,
+        });
         state.project.metadata = {
           ...state.project.metadata,
           voiceoverAudioUrl: publicUrl,
           voiceoverFlashAt: Date.now(),
-          ...(estimateSec != null
-            ? { voiceoverEstimateSec: estimateSec }
+          voiceoverSwapPulseAt: Date.now(),
+          ...(voiceoverDurationSec != null
+            ? { voiceoverDurationSec }
             : {}),
         };
         fitScenesToDuration(state, targetSec);
@@ -822,6 +833,28 @@ export const useTimelineStore = create<TimelineStore>()(
             c.assetUrl = publicUrl;
           }
         }
+        state.voiceoverSyncBusy = false;
+      }),
+
+    beginVoiceoverSwap: () =>
+      set((state) => {
+        state.voiceoverSyncBusy = true;
+        state.project.metadata = {
+          ...state.project.metadata,
+          voiceoverAudioUrl: "",
+          voiceoverTranscript: null,
+          voiceoverDurationSec: null,
+        };
+        for (const c of Object.values(state.clipsById)) {
+          if (c.mediaType === ClipMediaType.VOICEOVER) {
+            c.assetUrl = null;
+          }
+        }
+      }),
+
+    setVoiceoverSyncBusy: (busy) =>
+      set((state) => {
+        state.voiceoverSyncBusy = busy;
       }),
 
     setMasterVoiceoverScript: (script) =>
@@ -949,7 +982,14 @@ export const useTimelineStore = create<TimelineStore>()(
         state.isPlaying = false;
         state.selectedClipId = next.selectedClipId;
         state.directorPlanApplied = next.directorPlanApplied;
+        state.directorGenerationBusy = next.directorGenerationBusy;
+        state.voiceoverSyncBusy = next.voiceoverSyncBusy;
         state.studioPanel = next.studioPanel;
+      }),
+
+    setDirectorGenerationBusy: (busy) =>
+      set((state) => {
+        state.directorGenerationBusy = busy;
       }),
 
     hydrateFromDirectorPlan: (plan, projectId, options) =>
@@ -968,6 +1008,8 @@ export const useTimelineStore = create<TimelineStore>()(
         state.isPlaying = false;
         state.selectedClipId = null;
         state.directorPlanApplied = true;
+        state.directorGenerationBusy = false;
+        state.voiceoverSyncBusy = false;
         state.studioPanel = "slideshow";
         relayoutEndScreen(state);
       }),

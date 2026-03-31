@@ -14,11 +14,17 @@ import type {
   TrackTimelineState,
 } from "@/lib/types/timeline";
 import {
+  formatSandboxExportError,
+  localSandboxHint,
+} from "./format-sandbox-error";
+import {
   bundleRemotionProject,
   formatSse,
   type ExportSseProgress,
 } from "./helpers";
 import { restoreSnapshot } from "./restore-snapshot";
+import { framesToSeconds } from "@/lib/types/timeline";
+import { resolveVideoDurationFrames } from "@/lib/voiceover/video-duration-policy";
 
 export const maxDuration = 800;
 
@@ -83,10 +89,33 @@ export async function POST(req: NextRequest) {
     tracks,
     clipsById,
   );
+
+  const clientOrigin = data.origin.replace(/\/$/, "");
+  const localLike =
+    clientOrigin.includes("localhost") || clientOrigin.includes("127.0.0.1");
+  const renderPublicOrigin =
+    process.env.REMOTION_EXPORT_PUBLIC_URL?.replace(/\/$/, "") ||
+    (process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : undefined) ||
+    (!localLike && clientOrigin.startsWith("https://") ? clientOrigin : undefined);
+
+  const metadata = project.metadata as Record<string, unknown>;
+  const voiceoverDurationSec =
+    typeof metadata.voiceoverDurationSec === "number"
+      ? metadata.voiceoverDurationSec
+      : null;
+  const computedDurationInFrames = resolveVideoDurationFrames({
+    fps: data.fps,
+    voiceoverDurationSec,
+    fallbackDurationSec: framesToSeconds(data.durationInFrames, data.fps),
+  });
+
   const inputProps = {
     ...baseProps,
-    __compositionDurationInFrames: data.durationInFrames,
+    __compositionDurationInFrames: computedDurationInFrames,
     __compositionFps: data.fps,
+    ...(renderPublicOrigin ? { renderPublicOrigin } : {}),
   };
 
   const encoder = new TextEncoder();
@@ -116,6 +145,9 @@ export async function POST(req: NextRequest) {
     try {
       if (!process.env.VERCEL) {
         bundleRemotionProject();
+        // @remotion/vercel's addBundleToSandbox mkdirs e.g. remotion-bundle/public but never
+        // creates remotion-bundle itself — Vercel fs API returns 400 without this parent.
+        await sandbox.mkDir("remotion-bundle");
         await addBundleToSandbox({ sandbox, bundleDir: ".remotion" });
       }
 
@@ -171,9 +203,18 @@ export async function POST(req: NextRequest) {
       await send({ type: "done", url, size });
     } catch (err) {
       console.error("[export-ad]", err);
+      let message = formatSandboxExportError(err);
+      if (
+        !process.env.VERCEL &&
+        /Status code \d{3}/.test(message) &&
+        !message.includes("VERCEL_OIDC_TOKEN") &&
+        !message.includes("file_error")
+      ) {
+        message += localSandboxHint();
+      }
       await send({
         type: "error",
-        message: err instanceof Error ? err.message : "Export failed",
+        message,
       });
     } finally {
       await sandbox.stop().catch(() => {});

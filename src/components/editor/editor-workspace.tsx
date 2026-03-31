@@ -1,7 +1,9 @@
 "use client";
 
 import type { PlayerRef } from "@remotion/player";
-import { Clapperboard, Pause, Play } from "lucide-react";
+import { motion } from "framer-motion";
+import { Clapperboard, Pause, Play, TriangleAlert } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { ExportStudioModal } from "@/components/editor/export-studio-modal";
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +13,10 @@ import { InspectorPanel } from "@/components/editor/inspector-panel";
 import { MultiTrackTimeline } from "@/components/editor/multi-track-timeline";
 import { StudioShell } from "@/components/editor/studio-shell";
 import { framesToSeconds } from "@/lib/types/timeline";
+import {
+  STUDIO_ASSEMBLY_MS,
+  useStudioEntranceStore,
+} from "@/lib/stores/studio-entrance-store";
 import { useTimelineStore } from "@/lib/stores/timeline-store";
 import { cn } from "@/lib/utils";
 
@@ -33,8 +39,15 @@ function isEditableTarget(t: EventTarget | null): boolean {
 }
 
 export function EditorWorkspace({ projectId }: EditorWorkspaceProps) {
+  const router = useRouter();
   const playerRef = useRef<PlayerRef>(null);
+  const headerRef = useRef<HTMLElement | null>(null);
+  const transportRef = useRef<HTMLDivElement | null>(null);
+  const timelineRef = useRef<HTMLDivElement | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
+  const [showGoBackPrompt, setShowGoBackPrompt] = useState(false);
+  const [previewMaxHeightPx, setPreviewMaxHeightPx] = useState(560);
+  const entrancePhase = useStudioEntranceStore((s) => s.phase);
   const isPlaying = useTimelineStore((s) => s.isPlaying);
   const setIsPlaying = useTimelineStore((s) => s.setIsPlaying);
   const togglePlayback = useTimelineStore((s) => s.togglePlayback);
@@ -47,6 +60,13 @@ export function EditorWorkspace({ projectId }: EditorWorkspaceProps) {
   const totalSec = framesToSeconds(durationInFrames, fps);
   const headerBadgeLabel =
     projectId.toLowerCase() === "demo" ? "demo by Shahal K" : projectId;
+
+  const assemblySec = STUDIO_ASSEMBLY_MS / 1000;
+  const assemblyEase = [0.22, 1, 0.36, 1] as const;
+  const instant = { duration: 0 } as const;
+  const shouldBootHide =
+    entrancePhase === "boot" || entrancePhase === "ignition";
+  const cinematicIdle = entrancePhase === "idle";
 
   useEffect(() => {
     if (!isPlaying) return;
@@ -87,6 +107,39 @@ export function EditorWorkspace({ projectId }: EditorWorkspaceProps) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [togglePlayback]);
 
+  const onConfirmGoBack = () => {
+    setShowGoBackPrompt(false);
+    router.push("/");
+  };
+
+  useEffect(() => {
+    const clamp = (n: number, min: number, max: number) =>
+      Math.max(min, Math.min(max, n));
+
+    const recalc = () => {
+      const viewportH = window.innerHeight;
+      const headerH = headerRef.current?.offsetHeight ?? 0;
+      const transportH = transportRef.current?.offsetHeight ?? 0;
+      const timelineH = timelineRef.current?.offsetHeight ?? 0;
+      // Safety buffer covers paddings/borders/gaps to prevent overlap at high zoom.
+      const chromeBuffer = 46;
+      const available = viewportH - headerH - transportH - timelineH - chromeBuffer;
+      const next = clamp(Math.floor(available * 0.94), 260, 720);
+      setPreviewMaxHeightPx(next);
+    };
+
+    recalc();
+    const ro = new ResizeObserver(() => recalc());
+    if (headerRef.current) ro.observe(headerRef.current);
+    if (transportRef.current) ro.observe(transportRef.current);
+    if (timelineRef.current) ro.observe(timelineRef.current);
+    window.addEventListener("resize", recalc);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", recalc);
+    };
+  }, [directorPlanApplied]);
+
   return (
     <>
       <div className="flex h-[100dvh] flex-col overflow-hidden bg-background lg:hidden">
@@ -107,7 +160,23 @@ export function EditorWorkspace({ projectId }: EditorWorkspaceProps) {
       </div>
 
       <div className="hidden h-[100dvh] flex-col overflow-hidden bg-background lg:flex">
-        <header className="flex shrink-0 items-center justify-between gap-4 border-b border-border/80 bg-background/80 px-5 py-3 backdrop-blur-md">
+        <motion.header
+          ref={headerRef}
+          className="flex shrink-0 items-center justify-between gap-4 border-b border-border/80 bg-background/80 px-5 py-3 backdrop-blur-md"
+          initial={false}
+          animate={
+            cinematicIdle
+              ? { y: 0, opacity: 1 }
+              : shouldBootHide
+                ? { y: -28, opacity: 0 }
+                : { y: 0, opacity: 1 }
+          }
+          transition={
+            cinematicIdle || shouldBootHide
+              ? instant
+              : { duration: assemblySec, ease: assemblyEase }
+          }
+        >
           <div className="min-w-0 space-y-0.5">
             <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
               AI Ad Studio
@@ -127,28 +196,63 @@ export function EditorWorkspace({ projectId }: EditorWorkspaceProps) {
               {headerBadgeLabel}
             </Badge>
             {directorPlanApplied ? (
-              <Button
-                type="button"
-                size="sm"
-                className={cn(
-                  "export-save-shimmer relative h-9 shrink-0 border border-white/[0.14] px-4 text-xs font-semibold tracking-tight text-white",
-                  "bg-gradient-to-b from-[oklch(0.58_0.14_264)] via-[oklch(0.51_0.15_262)] to-[oklch(0.43_0.14_260)]",
-                  "shadow-[0_0_22px_rgba(59,130,246,0.4),0_4px_18px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.16)]",
-                  "transition-[transform,filter,box-shadow] hover:scale-[1.02] hover:brightness-[1.05]",
-                  "hover:shadow-[0_0_30px_rgba(96,165,250,0.48),0_6px_22px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.2)]",
-                )}
-                onClick={() => setExportOpen(true)}
-              >
-                Save &amp; Continue
-              </Button>
+              <>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className={cn(
+                    "h-9 shrink-0 border-amber-200/20 bg-amber-50/5 px-4 text-xs font-semibold tracking-tight text-amber-100",
+                    "shadow-[0_6px_18px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.08)]",
+                    "transition-[transform,filter] hover:scale-[1.02] hover:bg-amber-100/10",
+                  )}
+                  onClick={() => setShowGoBackPrompt(true)}
+                >
+                  Go Back
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  className={cn(
+                    "export-save-shimmer relative h-9 shrink-0 border border-white/[0.14] px-4 text-xs font-semibold tracking-tight text-white",
+                    "bg-gradient-to-b from-[oklch(0.58_0.14_264)] via-[oklch(0.51_0.15_262)] to-[oklch(0.43_0.14_260)]",
+                    "shadow-[0_0_22px_rgba(59,130,246,0.4),0_4px_18px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.16)]",
+                    "transition-[transform,filter,box-shadow] hover:scale-[1.02] hover:brightness-[1.05]",
+                    "hover:shadow-[0_0_30px_rgba(96,165,250,0.48),0_6px_22px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.2)]",
+                  )}
+                  onClick={() => setExportOpen(true)}
+                >
+                  Save &amp; Continue
+                </Button>
+              </>
             ) : null}
           </div>
-        </header>
+        </motion.header>
 
         <div className="flex min-h-0 flex-1">
-          <aside className="flex h-full min-h-0 w-[min(100%,400px)] shrink-0 overflow-hidden">
+          <motion.aside
+            className="flex h-full min-h-0 w-[min(100%,400px)] shrink-0 overflow-hidden"
+            initial={false}
+            animate={
+              cinematicIdle
+                ? { x: 0, opacity: 1 }
+                : shouldBootHide
+                  ? { x: -52, opacity: 0 }
+                  : { x: 0, opacity: 1 }
+            }
+            transition={
+              cinematicIdle || shouldBootHide
+                ? instant
+                : {
+                    type: "spring",
+                    stiffness: 380,
+                    damping: 28,
+                    mass: 0.78,
+                  }
+            }
+          >
             <StudioShell projectId={projectId} />
-          </aside>
+          </motion.aside>
 
           <div className="flex min-w-0 min-h-0 flex-1 flex-col">
             <div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -156,12 +260,40 @@ export function EditorWorkspace({ projectId }: EditorWorkspaceProps) {
               <div className="relative flex min-h-0 flex-1 flex-col bg-black">
                 <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden px-3 py-3">
                   <div className="mx-auto w-full max-w-[1040px] shrink-0 px-1">
-                    <div
+                    <motion.div
                       className="relative w-full overflow-hidden rounded-xl bg-black ring-1 ring-white/10"
                       style={{
                         aspectRatio: "16 / 9",
-                        maxHeight: "min(56vh, calc(100dvh - 300px))",
+                        maxHeight: `${previewMaxHeightPx}px`,
                       }}
+                      initial={false}
+                      animate={
+                        cinematicIdle
+                          ? {
+                              scale: 1,
+                              opacity: 1,
+                              filter: "blur(0px)",
+                            }
+                          : shouldBootHide
+                            ? {
+                                scale: 0.9,
+                                opacity: 0.65,
+                                filter: "blur(12px)",
+                              }
+                            : {
+                                scale: 1,
+                                opacity: 1,
+                                filter: "blur(0px)",
+                              }
+                      }
+                      transition={
+                        cinematicIdle || shouldBootHide
+                          ? instant
+                          : {
+                              duration: assemblySec,
+                              ease: assemblyEase,
+                            }
+                      }
                     >
                       {directorPlanApplied ? (
                         <div className="absolute inset-0">
@@ -183,13 +315,29 @@ export function EditorWorkspace({ projectId }: EditorWorkspaceProps) {
                           </div>
                         </div>
                       )}
-                    </div>
+                    </motion.div>
                   </div>
                 </div>
               </div>
 
               {directorPlanApplied ? (
-                <div className="flex shrink-0 items-center justify-center gap-3 border-y border-border/70 bg-card/50 px-4 py-2.5 backdrop-blur-md">
+                <motion.div
+                  ref={transportRef}
+                  className="flex shrink-0 items-center justify-center gap-3 border-y border-border/70 bg-card/50 px-4 py-2.5 backdrop-blur-md"
+                  initial={false}
+                  animate={
+                    cinematicIdle
+                      ? { opacity: 1, y: 0 }
+                      : shouldBootHide
+                        ? { opacity: 0, y: 14 }
+                        : { opacity: 1, y: 0 }
+                  }
+                  transition={
+                    cinematicIdle || shouldBootHide
+                      ? instant
+                      : { duration: assemblySec, ease: assemblyEase }
+                  }
+                >
                   <Button
                     type="button"
                     size="icon"
@@ -207,27 +355,78 @@ export function EditorWorkspace({ projectId }: EditorWorkspaceProps) {
                   <span className="min-w-[8.5rem] text-center font-mono text-xs tabular-nums text-foreground/90">
                     {formatTimecode(currentSec)} / {formatTimecode(totalSec)}
                   </span>
-                </div>
+                </motion.div>
               ) : null}
             </div>
 
             {directorPlanApplied ? (
-              <div className="shrink-0 border-t border-border/80 bg-card/70 px-4 py-3 backdrop-blur-lg">
+              <motion.div
+                ref={timelineRef}
+                className="shrink-0 border-t border-border/80 bg-card/70 px-4 py-3 backdrop-blur-lg"
+                initial={false}
+                animate={
+                  cinematicIdle
+                    ? { y: 0, opacity: 1 }
+                    : shouldBootHide
+                      ? { y: 48, opacity: 0 }
+                      : { y: 0, opacity: 1 }
+                }
+                transition={
+                  cinematicIdle || shouldBootHide
+                    ? instant
+                    : { duration: assemblySec, ease: assemblyEase }
+                }
+              >
                 <MultiTrackTimeline projectId={projectId} />
-              </div>
+              </motion.div>
             ) : (
-              <div className="shrink-0 border-t border-border/80 bg-card/60 px-4 py-4 backdrop-blur-lg">
+              <motion.div
+                ref={timelineRef}
+                className="shrink-0 border-t border-border/80 bg-card/60 px-4 py-4 backdrop-blur-lg"
+                initial={false}
+                animate={
+                  cinematicIdle
+                    ? { y: 0, opacity: 1 }
+                    : shouldBootHide
+                      ? { y: 40, opacity: 0 }
+                      : { y: 0, opacity: 1 }
+                }
+                transition={
+                  cinematicIdle || shouldBootHide
+                    ? instant
+                    : { duration: assemblySec, ease: assemblyEase }
+                }
+              >
                 <p className="text-center text-[11px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
                   Timeline editor unlocks after generation
                 </p>
-              </div>
+              </motion.div>
             )}
           </div>
 
           {directorPlanApplied ? (
-            <aside className="hidden w-[min(100%,360px)] shrink-0 overflow-y-auto border-l border-border/80 bg-sidebar/20 p-4 backdrop-blur-md lg:flex lg:flex-col">
-              <InspectorPanel projectId={projectId} />
-            </aside>
+            <motion.aside
+              className="hidden w-[min(100%,360px)] shrink-0 overflow-y-auto border-l border-border/80 bg-sidebar/20 p-4 backdrop-blur-md lg:flex lg:flex-col"
+              initial={false}
+              animate={
+                cinematicIdle
+                  ? { x: 0, opacity: 1 }
+                  : shouldBootHide
+                    ? { x: 56, opacity: 0 }
+                    : { x: 0, opacity: 1 }
+              }
+              transition={
+                cinematicIdle || shouldBootHide
+                  ? instant
+                  : {
+                      duration: assemblySec,
+                      ease: assemblyEase,
+                      delay: 0.06,
+                    }
+              }
+            >
+              <InspectorPanel />
+            </motion.aside>
           ) : null}
         </div>
 
@@ -236,6 +435,44 @@ export function EditorWorkspace({ projectId }: EditorWorkspaceProps) {
           onClose={() => setExportOpen(false)}
         />
       </div>
+      {showGoBackPrompt ? (
+        <div className="fixed inset-0 z-[140] flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.96, y: 8 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+            className="w-full max-w-md rounded-2xl border border-white/15 bg-neutral-950/95 p-5 shadow-[0_24px_90px_rgba(0,0,0,0.6)]"
+          >
+            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-amber-300/25 bg-amber-200/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-amber-100">
+              <TriangleAlert className="size-3.5" />
+              Unsaved Progress
+            </div>
+            <h3 className="text-lg font-semibold tracking-tight text-white">
+              Your progress is not saved.
+            </h3>
+            <p className="mt-1.5 text-sm text-zinc-300">
+              Do you want to go back? Any unsaved timeline edits may be lost.
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="border-zinc-700 bg-zinc-900/60 text-zinc-100 hover:bg-zinc-800"
+                onClick={() => setShowGoBackPrompt(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                className="bg-amber-600 text-white hover:bg-amber-500"
+                onClick={onConfirmGoBack}
+              >
+                Go Back
+              </Button>
+            </div>
+          </motion.div>
+        </div>
+      ) : null}
     </>
   );
 }

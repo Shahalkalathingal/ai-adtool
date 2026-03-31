@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Montserrat } from "next/font/google";
-import { Toaster } from "@/components/ui/sonner";
-import { TooltipProvider } from "@/components/ui/tooltip";
+import { Geist, Geist_Mono, JetBrains_Mono, Montserrat } from "next/font/google";
+import { ClientProviders } from "@/app/client-providers";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -12,6 +11,12 @@ const geistSans = Geist({
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  variable: "--font-studio-mono",
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
 });
 
 const montserrat = Montserrat({
@@ -33,13 +38,10 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`dark ${geistSans.variable} ${geistMono.variable} ${montserrat.variable} h-full`}
+      className={`dark ${geistSans.variable} ${geistMono.variable} ${jetbrainsMono.variable} ${montserrat.variable} h-full`}
     >
       <body className="min-h-full antialiased">
-        <TooltipProvider>
-          {children}
-          <Toaster position="top-center" richColors />
-        </TooltipProvider>
+        <ClientProviders>{children}</ClientProviders>
       </body>
     </html>
   );

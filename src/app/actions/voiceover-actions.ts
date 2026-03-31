@@ -3,6 +3,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { synthesizeMicrosoftEdgeTts } from "@/lib/services/microsoft-edge-tts";
+import { normalizeMasterScriptWhitespace } from "@/lib/voiceover/master-script-policy";
 
 export type GenerateVoiceoverResult =
   | { ok: true; publicUrl: string; durationSecEstimate: number }
@@ -37,10 +38,7 @@ function compactScriptForFiveSec(script: string): string {
 }
 
 function normalizeMasterScript(script: string): string {
-  return script
-    .replace(/\s+/g, " ")
-    .replace(/\s+([,.;!?])/g, "$1")
-    .trim();
+  return normalizeMasterScriptWhitespace(script);
 }
 
 /**

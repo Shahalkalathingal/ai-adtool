@@ -38,6 +38,26 @@ export type BrandKitState = {
   endScreenCtaTextColor?: string;
   /** Brand slogan / tagline (header + trust layer). */
   tagline?: string;
+  /** Bottom banner: primary brand name color. */
+  bannerBrandNameColor?: string;
+  /** Bottom banner: detail line color (address / website). */
+  bannerDetailColor?: string;
+  /** Bottom banner: phone number color. */
+  bannerPhoneColor?: string;
+  /** Bottom banner: phone scale multiplier (0.8–1.4). */
+  bannerPhoneScale?: number;
+  /** Header banner: brand name color. */
+  headerBrandNameColor?: string;
+  /** Header banner: slogan color. */
+  headerSloganColor?: string;
+  /** Header banner: text scale multiplier. */
+  headerBrandScale?: number;
+  /** Header banner: logo size scale multiplier. */
+  headerLogoScale?: number;
+  /** QR overlay: outline color. */
+  qrOutlineColor?: string;
+  /** QR overlay: outline stroke width in px. */
+  qrOutlineWidth?: number;
 };
 
 export type ProjectTimelineMeta = {
@@ -108,6 +128,10 @@ export type TimelineState = {
   selectedClipId: string | null;
   /** Set to true once Director successfully hydrates the timeline. */
   directorPlanApplied: boolean;
+  /** True while URL → Director (+ Neural Script Architect) is running (Voice tab shows optimizer UI). */
+  directorGenerationBusy: boolean;
+  /** True while voiceover is being replaced and timeline is remapped. */
+  voiceoverSyncBusy: boolean;
   /** Studio left rail: contextual panel. */
   studioPanel: StudioPanelId;
 };
