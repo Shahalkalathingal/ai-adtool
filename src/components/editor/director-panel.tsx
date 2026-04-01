@@ -39,7 +39,12 @@ import { AD_NICHE_OPTIONS, type AdNicheId } from "@/lib/services/neural-script-a
 
 export function DirectorPanel() {
   const params = useParams();
-  const projectId = typeof params.id === "string" ? params.id : "draft";
+  const projectId =
+    typeof params.projectId === "string" && params.projectId.trim()
+      ? params.projectId
+      : typeof params.id === "string"
+        ? params.id
+        : "draft";
   const seededUrl =
     useStudioEntranceStore((s) => s.initialUrl) || "https://";
   const [url, setUrl] = useState(seededUrl);

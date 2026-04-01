@@ -40,6 +40,13 @@ function normalizeMasterScript(script: string): string {
   return normalizeMasterScriptWhitespace(script);
 }
 
+function makeUniqueVoiceFilename(projectId: string): string {
+  const safe = projectId.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 24) || "project";
+  const stamp = Date.now().toString(36);
+  const rand = Math.random().toString(36).slice(2, 8);
+  return `voice-${safe}-${stamp}-${rand}.mp3`;
+}
+
 /**
  * Concatenate voiceover scripts from the client timeline JSON and synthesize one MP3 via Edge TTS.
  */
@@ -122,7 +129,7 @@ export async function generateVoiceoverFromTimelineJson(
       voice: "en-US-GuyNeural",
     });
 
-    const filename = "voice.mp3";
+    const filename = makeUniqueVoiceFilename(projectId);
     const saved = await savePublicMedia({
       projectId,
       filename,

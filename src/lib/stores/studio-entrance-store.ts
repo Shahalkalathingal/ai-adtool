@@ -18,7 +18,9 @@ type StudioEntranceState = {
   isInitializing: boolean;
   /** URL the user entered on the landing page (used to seed Director URL). */
   initialUrl: string;
-  beginEntrance: (url?: string) => void;
+  /** Per-launch project id so each session writes isolated media. */
+  initialProjectId: string;
+  beginEntrance: (url?: string, projectId?: string) => void;
   setPhase: (phase: StudioEntrancePhase) => void;
 };
 
@@ -26,11 +28,13 @@ export const useStudioEntranceStore = create<StudioEntranceState>((set) => ({
   phase: "idle",
   isInitializing: false,
   initialUrl: "",
-  beginEntrance: (url) =>
+  initialProjectId: "",
+  beginEntrance: (url, projectId) =>
     set({
       phase: "ignition",
       isInitializing: true,
       initialUrl: url?.trim() ?? "",
+      initialProjectId: projectId?.trim() ?? "",
     }),
   setPhase: (phase) =>
     set({
@@ -41,4 +45,8 @@ export const useStudioEntranceStore = create<StudioEntranceState>((set) => ({
 }));
 
 export const STUDIO_EDITOR_PATH = "/studio";
+export function buildStudioEditorPath(projectId: string): string {
+  const safe = projectId.replace(/[^a-zA-Z0-9_-]/g, "") || "demo";
+  return `${STUDIO_EDITOR_PATH}/${safe}`;
+}
 export { IGNITION_MS };

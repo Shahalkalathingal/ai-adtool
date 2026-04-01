@@ -1,17 +1,18 @@
-/* Studio entry route — keeps the /studio URL while mounting the shared editor workspace. */
+/* Studio entry route — redirects to an isolated per-launch project path. */
 "use client";
 
 import { useEffect } from "react";
-import { EditorWorkspace } from "@/components/editor/editor-workspace";
-import { useTimelineStore } from "@/lib/stores/timeline-store";
+import { useRouter } from "next/navigation";
+import { buildStudioEditorPath } from "@/lib/stores/studio-entrance-store";
 
 export default function StudioEntryPage() {
-  const resetForProject = useTimelineStore((s) => s.resetForProject);
+  const router = useRouter();
 
   useEffect(() => {
-    resetForProject("demo");
-  }, [resetForProject]);
+    const pid = `prj_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+    router.replace(buildStudioEditorPath(pid));
+  }, [router]);
 
-  return <EditorWorkspace projectId="demo" />;
+  return null;
 }
 

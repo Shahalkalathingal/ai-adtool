@@ -34,7 +34,7 @@ export async function savePublicMedia({
     const key = `media/${safeProject}/${filename}`;
     const uploaded = await put(key, buffer, {
       access: "public",
-      allowOverwrite: true,
+      allowOverwrite: false,
       addRandomSuffix: false,
       contentType,
       token: blobToken,

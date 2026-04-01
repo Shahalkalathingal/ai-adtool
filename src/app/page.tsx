@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { STUDIO_EDITOR_PATH, useStudioEntranceStore } from "@/lib/stores/studio-entrance-store";
+import { STUDIO_EDITOR_PATH, buildStudioEditorPath, useStudioEntranceStore } from "@/lib/stores/studio-entrance-store";
 
 const TICKER_ITEMS = [
   "REAL ESTATE",
@@ -112,6 +112,9 @@ export default function Home() {
   const [cursor, setCursor] = useState({ x: 0, y: 0 });
   const [pingIndex, setPingIndex] = useState(0);
   const magneticRef = useRef<HTMLButtonElement | null>(null);
+
+  const createProjectId = () =>
+    `prj_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
@@ -246,7 +249,12 @@ export default function Home() {
                     onClick={() => {
                       setLaunchZoom(true);
                       const trimmed = url.trim();
-                      setTimeout(() => beginEntrance(trimmed || "https://"), 520);
+                      const projectId = createProjectId();
+                      void router.prefetch(buildStudioEditorPath(projectId));
+                      setTimeout(
+                        () => beginEntrance(trimmed || "https://", projectId),
+                        520,
+                      );
                     }}
                     className="relative inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-cyan-200 px-4 py-2 text-sm font-semibold text-zinc-950 shadow-[0_8px_30px_rgba(34,211,238,0.45)] transition-transform duration-150"
                   >

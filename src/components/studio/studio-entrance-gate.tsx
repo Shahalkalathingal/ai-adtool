@@ -4,10 +4,10 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
 import {
+  buildStudioEditorPath,
   IGNITION_MS,
   STUDIO_ASSEMBLY_MS,
   STUDIO_BOOT_MS,
-  STUDIO_EDITOR_PATH,
   useStudioEntranceStore,
 } from "@/lib/stores/studio-entrance-store";
 import { playStudioLockInSfx } from "@/lib/ui/studio-entrance-sfx";
@@ -62,6 +62,7 @@ export function StudioEntranceGate({ children }: { children: React.ReactNode }) 
   const router = useRouter();
   const phase = useStudioEntranceStore((s) => s.phase);
   const setPhase = useStudioEntranceStore((s) => s.setPhase);
+  const initialProjectId = useStudioEntranceStore((s) => s.initialProjectId);
   const navigatedRef = useRef(false);
   const lockSoundRef = useRef(false);
 
@@ -72,11 +73,12 @@ export function StudioEntranceGate({ children }: { children: React.ReactNode }) 
       setPhase("boot");
       if (!navigatedRef.current) {
         navigatedRef.current = true;
-        router.push(STUDIO_EDITOR_PATH);
+        const pid = initialProjectId?.trim() || "demo";
+        router.push(buildStudioEditorPath(pid));
       }
     }, IGNITION_MS);
     return () => window.clearTimeout(t);
-  }, [phase, router, setPhase]);
+  }, [initialProjectId, phase, router, setPhase]);
 
   useEffect(() => {
     if (phase !== "boot") return;
