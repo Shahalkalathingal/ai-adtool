@@ -19,7 +19,10 @@ export async function savePublicMedia({
   buffer,
   contentType,
 }: SavePublicMediaArgs): Promise<SavePublicMediaResult> {
-  const safeProject = projectId.replace(/[^a-zA-Z0-9_-]/g, "") || "project";
+  const safeProject = projectId.replace(/[^a-zA-Z0-9_-]/g, "");
+  if (!safeProject || safeProject.length < 6) {
+    return { ok: false, error: "Invalid project id for media save." };
+  }
 
   if (process.env.VERCEL) {
     const blobToken = process.env.BLOB_READ_WRITE_TOKEN;

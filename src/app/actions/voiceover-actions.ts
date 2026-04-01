@@ -8,6 +8,10 @@ export type GenerateVoiceoverResult =
   | { ok: true; publicUrl: string; durationSecEstimate: number }
   | { ok: false; error: string };
 
+function isValidProjectId(projectId: string): boolean {
+  return /^[a-zA-Z0-9_-]{6,80}$/.test(projectId);
+}
+
 function estimateDurationFromText(text: string): number {
   const words = text.trim().split(/\s+/).filter(Boolean).length;
   return Math.max(2, words / 2.4);
@@ -54,6 +58,9 @@ export async function generateVoiceoverFromTimelineJson(
   projectId: string,
   timelineJson: string,
 ): Promise<GenerateVoiceoverResult> {
+  if (!isValidProjectId(projectId)) {
+    return { ok: false, error: "Invalid project id." };
+  }
   let clipsById: Record<string, ClipJson> = {};
   let websiteUrl = "";
   let masterScript = "";

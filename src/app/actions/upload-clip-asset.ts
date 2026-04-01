@@ -6,11 +6,24 @@ export type UploadClipAssetResult =
   | { ok: true; publicUrl: string }
   | { ok: false; error: string };
 
+function isValidProjectId(projectId: string): boolean {
+  return /^[a-zA-Z0-9_-]{6,80}$/.test(projectId);
+}
+
+function makeUniqueFilename(prefix: string, ext: string): string {
+  const stamp = Date.now().toString(36);
+  const rand = Math.random().toString(36).slice(2, 8);
+  return `${prefix}-${stamp}-${rand}.${ext}`;
+}
+
 export async function uploadClipImageAction(
   projectId: string,
   clipId: string,
   formData: FormData,
 ): Promise<UploadClipAssetResult> {
+  if (!isValidProjectId(projectId)) {
+    return { ok: false, error: "Invalid project id." };
+  }
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) {
     return { ok: false, error: "No file uploaded." };
@@ -29,7 +42,7 @@ export async function uploadClipImageAction(
     return { ok: false, error: "Image must be 12MB or smaller." };
   }
 
-  const filename = `image-${safeClip}.${finalExt}`;
+  const filename = makeUniqueFilename(`image-${safeClip}`, finalExt);
   const saved = await savePublicMedia({
     projectId,
     filename,
@@ -52,6 +65,9 @@ export async function uploadBrandLogoAction(
   projectId: string,
   formData: FormData,
 ): Promise<UploadClipAssetResult> {
+  if (!isValidProjectId(projectId)) {
+    return { ok: false, error: "Invalid project id." };
+  }
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) {
     return { ok: false, error: "No file uploaded." };
@@ -68,7 +84,7 @@ export async function uploadBrandLogoAction(
     return { ok: false, error: "Logo must be 6MB or smaller." };
   }
 
-  const filename = `brand-logo.${finalExt}`;
+  const filename = makeUniqueFilename("brand-logo", finalExt);
   const saved = await savePublicMedia({
     projectId,
     filename,

@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useParams } from "next/navigation";
 import { EditorWorkspace } from "@/components/editor/editor-workspace";
+import { makeProjectId } from "@/lib/stores/studio-entrance-store";
 import { useTimelineStore } from "@/lib/stores/timeline-store";
 
 export default function StudioProjectPage() {
@@ -11,7 +12,7 @@ export default function StudioProjectPage() {
   const projectId =
     typeof params.projectId === "string" && params.projectId.trim()
       ? params.projectId
-      : "demo";
+      : makeProjectId();
 
   useEffect(() => {
     resetForProject(projectId);

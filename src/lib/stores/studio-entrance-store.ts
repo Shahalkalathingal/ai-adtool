@@ -45,8 +45,11 @@ export const useStudioEntranceStore = create<StudioEntranceState>((set) => ({
 }));
 
 export const STUDIO_EDITOR_PATH = "/studio";
+export function makeProjectId(): string {
+  return `prj_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
 export function buildStudioEditorPath(projectId: string): string {
-  const safe = projectId.replace(/[^a-zA-Z0-9_-]/g, "") || "demo";
+  const safe = projectId.replace(/[^a-zA-Z0-9_-]/g, "") || makeProjectId();
   return `${STUDIO_EDITOR_PATH}/${safe}`;
 }
 export { IGNITION_MS };

@@ -6,6 +6,7 @@ import { useEffect, useRef } from "react";
 import {
   buildStudioEditorPath,
   IGNITION_MS,
+  makeProjectId,
   STUDIO_ASSEMBLY_MS,
   STUDIO_BOOT_MS,
   useStudioEntranceStore,
@@ -73,7 +74,7 @@ export function StudioEntranceGate({ children }: { children: React.ReactNode }) 
       setPhase("boot");
       if (!navigatedRef.current) {
         navigatedRef.current = true;
-        const pid = initialProjectId?.trim() || "demo";
+        const pid = initialProjectId?.trim() || makeProjectId();
         router.push(buildStudioEditorPath(pid));
       }
     }, IGNITION_MS);

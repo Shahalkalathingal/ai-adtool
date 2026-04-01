@@ -3,13 +3,16 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { buildStudioEditorPath } from "@/lib/stores/studio-entrance-store";
+import {
+  buildStudioEditorPath,
+  makeProjectId,
+} from "@/lib/stores/studio-entrance-store";
 
 export default function StudioEntryPage() {
   const router = useRouter();
 
   useEffect(() => {
-    const pid = `prj_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+    const pid = makeProjectId();
     router.replace(buildStudioEditorPath(pid));
   }, [router]);
 

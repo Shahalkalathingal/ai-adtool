@@ -60,8 +60,7 @@ export function EditorWorkspace({ projectId }: EditorWorkspaceProps) {
 
   const currentSec = framesToSeconds(playheadFrame, fps);
   const totalSec = framesToSeconds(durationInFrames, fps);
-  const headerBadgeLabel =
-    projectId.toLowerCase() === "demo" ? "demo by Shahal K" : projectId;
+  const headerBadgeLabel = projectId;
 
   const assemblySec = STUDIO_ASSEMBLY_MS / 1000;
   const assemblyEase = [0.22, 1, 0.36, 1] as const;
