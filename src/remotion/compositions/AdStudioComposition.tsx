@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { Globe, MapPin, Phone } from "lucide-react";
-import { Audio } from "@remotion/media";
 import { QRCodeSVG } from "qrcode.react";
 import {
   AbsoluteFill,
+  Audio,
   interpolate,
   useCurrentFrame,
   useVideoConfig,
@@ -1382,6 +1382,7 @@ export function AdStudioComposition({
     <>
       {musicSrc && musicVol > 0 ? (
         <Audio
+          key={musicSrc}
           src={musicSrc}
           volume={musicVol}
           trimAfter={durationInFrames}
