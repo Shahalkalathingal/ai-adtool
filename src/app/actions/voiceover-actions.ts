@@ -1,6 +1,5 @@
 "use server";
 
-import { synthesizeKokoroTts } from "@/lib/services/kokoro-tts";
 import { savePublicMedia } from "@/lib/storage/public-media";
 import {
   SCENE_VOICEOVER_MAX_WORDS,
@@ -140,6 +139,7 @@ export async function generateVoiceoverFromTimelineJson(
   }
 
   try {
+    const { synthesizeKokoroTts } = await import("@/lib/services/kokoro-tts");
     const buffer = await synthesizeKokoroTts(text, { voice: kokoroVoiceId });
 
     const filename = makeUniqueVoiceFilename(projectId);

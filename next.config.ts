@@ -21,6 +21,44 @@ const nextConfig: NextConfig = {
     "@vercel/sandbox",
     "esbuild",
   ],
+  /**
+   * Split giant dependency trees across routes so a single function stays under
+   * Vercel’s 250MB unzipped limit. See: output file tracing in Next.js docs.
+   */
+  outputFileTracingExcludes: {
+    "/api/export-ad": [
+      "node_modules/kokoro-js/**/*",
+      "node_modules/@huggingface/transformers/**/*",
+      "node_modules/onnxruntime-node/**/*",
+      "node_modules/onnxruntime-web/**/*",
+      "node_modules/phonemizer/**/*",
+      "node_modules/@prisma/client/**/*",
+      "node_modules/prisma/**/*",
+      "node_modules/.prisma/**/*",
+      "node_modules/@prisma/engines/**/*",
+    ],
+    "/api/remotion-audio-proxy": [
+      "node_modules/kokoro-js/**/*",
+      "node_modules/@huggingface/transformers/**/*",
+      "node_modules/onnxruntime-node/**/*",
+      "node_modules/onnxruntime-web/**/*",
+      "node_modules/phonemizer/**/*",
+      "node_modules/@prisma/client/**/*",
+      "node_modules/prisma/**/*",
+      "node_modules/.prisma/**/*",
+      "node_modules/@prisma/engines/**/*",
+    ],
+    "/studio": [
+      "node_modules/@remotion/vercel/**/*",
+      "node_modules/@remotion/cli/**/*",
+      "node_modules/@vercel/sandbox/**/*",
+    ],
+    "/studio/[projectId]": [
+      "node_modules/@remotion/vercel/**/*",
+      "node_modules/@remotion/cli/**/*",
+      "node_modules/@vercel/sandbox/**/*",
+    ],
+  },
 };
 
 export default nextConfig;

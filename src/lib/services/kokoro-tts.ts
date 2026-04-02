@@ -1,5 +1,4 @@
 import type { GenerateOptions } from "kokoro-js";
-import { RawAudio } from "@huggingface/transformers";
 import { DEFAULT_KOKORO_TTS_VOICE } from "@/lib/voiceover/kokoro-voices";
 
 const MODEL_ID = "onnx-community/Kokoro-82M-v1.0-ONNX";
@@ -109,6 +108,7 @@ export async function synthesizeKokoroTts(
     offset += part.length;
   }
 
+  const { RawAudio } = await import("@huggingface/transformers");
   const wav = new RawAudio(merged, SAMPLE_RATE).toWav();
   return Buffer.from(wav);
 }
