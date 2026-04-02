@@ -1,4 +1,8 @@
 import { z } from "zod";
+import {
+  SCENE_VOICEOVER_MAX_WORDS,
+  capWordCountWithCleanEnding,
+} from "@/lib/voiceover/master-script-policy";
 
 /** Structured brand fields — Gemini must prefer these over noisy markdown. */
 export const scrapedBrandSchema = z.object({
@@ -54,16 +58,14 @@ function formatVoiceoverSingleSentence(text: string): string {
     .trim();
   if (!cleaned) return "";
 
-  // Keep it immersive: one sentence only (Facebook/IG ad style).
+  // One spoken sentence per scene; cap length without stranded "… of your."
   const firstSentence =
     cleaned.split(/(?<=[.!?])\s+/)[0] || cleaned;
-
-  const words = firstSentence.split(" ").filter(Boolean);
-  const maxWords = 16;
-  const trimmed =
-    words.length <= maxWords ? firstSentence : `${words.slice(0, maxWords).join(" ")}.`;
-
-  return /[.!?]$/.test(trimmed) ? trimmed : `${trimmed}.`;
+  return capWordCountWithCleanEnding(
+    firstSentence,
+    SCENE_VOICEOVER_MAX_WORDS,
+    8,
+  );
 }
 
 function coerceToSevenScenes(plan: DirectorPlan): DirectorScene[] {
@@ -186,8 +188,13 @@ export function ensureDirectorPlanSceneImages(plan: DirectorPlan): DirectorPlan 
     ...scenes.map((s) => s.imageUrl).filter((x): x is string => Boolean(x)),
   ]);
   let productImageUrls = merged;
+  let i = 0;
   while (productImageUrls.length < 8) {
-    productImageUrls = [...productImageUrls, DIRECTOR_PLAN_FALLBACK_STILL];
+    productImageUrls = [
+      ...productImageUrls,
+      safePool[i % safePool.length] ?? DIRECTOR_PLAN_FALLBACK_STILL,
+    ];
+    i += 1;
   }
   productImageUrls = productImageUrls.slice(0, 12);
 

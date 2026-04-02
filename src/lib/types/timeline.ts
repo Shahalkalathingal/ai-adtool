@@ -28,6 +28,8 @@ export type BrandKitState = {
   endScreenTagline?: string;
   /** Outro card: large phone (falls back to `phone` when empty). */
   endScreenPhone?: string;
+  /** Outro card: hero phone color (Vibe-style burnt orange default in composition). */
+  endScreenPhoneColor?: string;
   /** Outro card CTA customization. */
   endScreenCtaText?: string;
   /** CTA button gradient start (expects `#RRGGBB`). */
@@ -128,10 +130,12 @@ export type TimelineState = {
   selectedClipId: string | null;
   /** Set to true once Director successfully hydrates the timeline. */
   directorPlanApplied: boolean;
-  /** True while URL → Director (+ Neural Script Architect) is running (Voice tab shows optimizer UI). */
+  /** True while director generation is running (scrape + plan from the URL captured on studio home). */
   directorGenerationBusy: boolean;
-  /** True while voiceover is being replaced and timeline is remapped. */
+  /** True while voiceover audio is being applied and clips are remapped to match. */
   voiceoverSyncBusy: boolean;
+  /** Incremented on each Director hydrate — drives one-shot auto voiceover. */
+  directorHydrateVersion: number;
   /** Studio left rail: contextual panel. */
   studioPanel: StudioPanelId;
 };

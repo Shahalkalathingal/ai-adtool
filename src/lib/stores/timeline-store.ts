@@ -25,6 +25,11 @@ import {
   type TrackTimelineState,
 } from "@/lib/types/timeline";
 import { resolveVideoDurationSec } from "@/lib/voiceover/video-duration-policy";
+import {
+  DEFAULT_KOKORO_TTS_VOICE,
+  type KokoroTtsVoiceId,
+} from "@/lib/voiceover/kokoro-voices";
+import { VIBE_STUDIO } from "@/lib/ui/vibe-studio-tokens";
 
 const DEFAULT_FPS = 30;
 
@@ -390,6 +395,7 @@ export function createInitialTimeline(projectId: string): TimelineState {
         highProtectionWatermark: false,
         selectedMusicPresetId: "none",
         masterVoiceoverScript: "",
+        kokoroTtsVoice: DEFAULT_KOKORO_TTS_VOICE,
       },
       brandConfig: {
         primaryColor: "#fafafa",
@@ -404,6 +410,7 @@ export function createInitialTimeline(projectId: string): TimelineState {
         endScreenCtaBg1: "",
         endScreenCtaBg2: "",
         endScreenCtaTextColor: "#0a0a0a",
+        bannerPhoneColor: VIBE_STUDIO.sceneBannerPhone,
       },
     },
     tracks,
@@ -414,6 +421,7 @@ export function createInitialTimeline(projectId: string): TimelineState {
     directorPlanApplied: false,
     directorGenerationBusy: false,
     voiceoverSyncBusy: false,
+    directorHydrateVersion: 0,
     studioPanel: "slideshow",
  };
 }
@@ -468,6 +476,7 @@ type TimelineActions = {
   beginVoiceoverSwap: () => void;
   setVoiceoverSyncBusy: (busy: boolean) => void;
   setMasterVoiceoverScript: (script: string) => void;
+  setKokoroTtsVoice: (voiceId: KokoroTtsVoiceId) => void;
   resetForProject: (projectId: string) => void;
   setDirectorGenerationBusy: (busy: boolean) => void;
   /** Replace timeline with a Gemini + Firecrawl director plan (30s+ multi-track). */
@@ -872,6 +881,14 @@ export const useTimelineStore = create<TimelineStore>()(
         }
       }),
 
+    setKokoroTtsVoice: (voiceId) =>
+      set((state) => {
+        state.project.metadata = {
+          ...state.project.metadata,
+          kokoroTtsVoice: voiceId,
+        };
+      }),
+
     applyRefinementPatch: (patch) =>
       set((state) => {
         if (patch.durationInFrames != null) {
@@ -984,6 +1001,7 @@ export const useTimelineStore = create<TimelineStore>()(
         state.directorPlanApplied = next.directorPlanApplied;
         state.directorGenerationBusy = next.directorGenerationBusy;
         state.voiceoverSyncBusy = next.voiceoverSyncBusy;
+        state.directorHydrateVersion = next.directorHydrateVersion;
         state.studioPanel = next.studioPanel;
       }),
 
@@ -1010,6 +1028,7 @@ export const useTimelineStore = create<TimelineStore>()(
         state.directorPlanApplied = true;
         state.directorGenerationBusy = false;
         state.voiceoverSyncBusy = false;
+        state.directorHydrateVersion = (state.directorHydrateVersion ?? 0) + 1;
         state.studioPanel = "slideshow";
         relayoutEndScreen(state);
       }),

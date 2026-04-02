@@ -28,6 +28,21 @@ import {
   MASTER_VOICEOVER_MAX_WORDS,
   MASTER_VOICEOVER_MIN_WORDS,
 } from "@/lib/voiceover/master-script-policy";
+import {
+  KOKORO_VOICE_GROUPS,
+  KOKORO_VOICE_OPTIONS,
+  normalizeKokoroVoiceId,
+  type KokoroTtsVoiceId,
+} from "@/lib/voiceover/kokoro-voices";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export function StudioVoiceTab() {
   const project = useTimelineStore((s) => s.project);
@@ -35,6 +50,7 @@ export function StudioVoiceTab() {
   const fps = useTimelineStore((s) => s.fps);
   const durationInFrames = useTimelineStore((s) => s.durationInFrames);
   const setMasterVoiceoverScript = useTimelineStore((s) => s.setMasterVoiceoverScript);
+  const setKokoroTtsVoice = useTimelineStore((s) => s.setKokoroTtsVoice);
   const setVoiceoverAsset = useTimelineStore((s) => s.setVoiceoverAsset);
   const beginVoiceoverSwap = useTimelineStore((s) => s.beginVoiceoverSwap);
   const setVoiceoverSyncBusy = useTimelineStore((s) => s.setVoiceoverSyncBusy);
@@ -52,6 +68,7 @@ export function StudioVoiceTab() {
     typeof project.metadata.masterVoiceoverScript === "string"
       ? project.metadata.masterVoiceoverScript
       : "";
+  const kokoroVoiceId = normalizeKokoroVoiceId(project.metadata.kokoroTtsVoice);
   const hasVoiceoverAudio =
     typeof project.metadata.voiceoverAudioUrl === "string" &&
     project.metadata.voiceoverAudioUrl.trim().length > 0;
@@ -175,10 +192,10 @@ export function StudioVoiceTab() {
           ) : null}
         </CardTitle>
         <CardDescription className="text-[11px] leading-relaxed">
-          Master script mode: one premium script block powers a single full-length
-          voiceover track. New timelines use the{" "}
-          <span className="font-medium text-foreground/90">Neural Script Architect</span>{" "}
-          (75–90 words, hook–value–CTA) aligned to your niche and scraped URL.
+          Full narration is generated automatically when your timeline opens (toast:
+          “Generating voiceover…”). Edit the master script here, then use{" "}
+          <span className="font-medium text-foreground/90">Update</span> to re-render audio after
+          changes. If the first run fails, use Regenerate below.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -197,6 +214,36 @@ export function StudioVoiceTab() {
           </Badge>
         </div>
         <Progress value={Math.min(100, (words / maxWords) * 100)} className="h-1.5" />
+        <div className="space-y-2">
+          <Label className="text-[11px] uppercase">Narrator voice</Label>
+          <Select
+            value={kokoroVoiceId}
+            disabled={directorGenerationBusy}
+            onValueChange={(v) => setKokoroTtsVoice(v as KokoroTtsVoiceId)}
+          >
+            <SelectTrigger
+              size="default"
+              className="h-9 w-full max-w-none border-border/80 bg-background/40 text-left text-sm shadow-none backdrop-blur-sm"
+            >
+              <SelectValue placeholder="Voice" />
+            </SelectTrigger>
+            <SelectContent position="popper" className="max-h-72">
+              {KOKORO_VOICE_GROUPS.map((group) => (
+                <SelectGroup key={group}>
+                  <SelectLabel>{group}</SelectLabel>
+                  {KOKORO_VOICE_OPTIONS.filter((o) => o.group === group).map((opt) => (
+                    <SelectItem key={opt.id} value={opt.id}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-[10px] text-muted-foreground">
+            Used for auto-generated and updated voiceovers. Default is a US male read suited to ads.
+          </p>
+        </div>
         <div className="space-y-2">
           <Label className="text-[11px] uppercase">Master script</Label>
           <Textarea
@@ -222,7 +269,7 @@ export function StudioVoiceTab() {
           onClick={() => void onGenerateFullVoiceover()}
         >
           {busy ? <Loader2 className="size-4 animate-spin" /> : <Mic className="size-4" />}
-          {hasVoiceoverAudio ? "Update Full Voiceover" : "Generate Full Voiceover"}
+          {hasVoiceoverAudio ? "Update full voiceover" : "Regenerate voiceover"}
         </Button>
         <div className="space-y-2 rounded-lg border border-border/70 bg-background/35 p-2.5">
           <div className="flex items-center justify-between">
@@ -310,7 +357,7 @@ export function StudioVoiceTab() {
               </p>
             ) : voiceoverSyncBusy ? (
               <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-primary">
-                Syncing Timeline...
+                Voiceover
               </p>
             ) : null}
             <motion.p
@@ -329,7 +376,7 @@ export function StudioVoiceTab() {
               {directorGenerationBusy
                 ? scriptOptimizerStatuses[optimizerIdx]
                 : voiceoverSyncBusy
-                  ? "Calibrating scene timing and outro hold..."
+                  ? "Adding your voiceover and lining it up with the scenes—almost ready."
                 : statuses[statusIndex]}
             </motion.p>
           </motion.div>

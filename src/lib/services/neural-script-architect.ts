@@ -2,9 +2,11 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import type { DirectorPlan } from "@/lib/types/director-plan";
 import type { ScrapedPageIntel } from "@/lib/services/firecrawl-scrape";
 import { getGeminiModelId } from "@/lib/services/gemini-model";
+import { logGeminiRequest } from "@/lib/services/gemini-request-log";
 import {
   MASTER_VOICEOVER_MAX_WORDS,
   MASTER_VOICEOVER_MIN_WORDS,
+  capWordCountWithCleanEnding,
   countMasterScriptWords,
   normalizeMasterScriptWhitespace,
 } from "@/lib/voiceover/master-script-policy";
@@ -105,10 +107,14 @@ export function describeUrlForCta(url: string): string {
     const hints: string[] = [];
 
     if (/(law|legal|attorney|lawyer|injury|counsel|esq)/i.test(blob)) {
-      hints.push("Legal-style site: CTA may favor phone or consultation; cite domain crisply if used.");
+      hints.push(
+        "Legal-style site: CTA may favor phone or consultation; if web, use the firm/brand name in speech, not the URL.",
+      );
     }
     if (/(shop|store|cart|checkout|product|collection|buy)/i.test(blob)) {
-      hints.push("Commerce signals: prefer “visit [domain]” / shop framing over a generic phone pitch when both exist.");
+      hints.push(
+        "Commerce signals: prefer shop/online framing using the brand name in speech—not reading the hostname—when both phone and site exist.",
+      );
     }
     if (/(app|saas|software|platform|cloud|api|login|signup|trial|demo)/i.test(blob)) {
       hints.push("Tech/SaaS signals: trial, demo, or “see it live” language fits if natural.");
@@ -120,14 +126,16 @@ export function describeUrlForCta(url: string): string {
       hints.push("Finance signals: steady, clear next step—call or secure visit.");
     }
     if (/(restaurant|menu|cafe|food|dining)/i.test(blob)) {
-      hints.push("Hospitality signals: reserve, order, or visit URL.");
+      hints.push(
+        "Hospitality signals: reserve, order, or visit using the brand name in speech—not the raw URL.",
+      );
     }
 
     return hints.length > 0
       ? hints.join(" ")
-      : "General brand URL: if both phone and website are known, pick the stronger on-site action (usually visit the domain or call).";
+      : "General brand URL: if both phone and website are known, pick the stronger action; for web, say the brand name aloud, not the domain string.";
   } catch {
-    return "URL parse failed—use phone or domain as provided.";
+    return "URL parse failed—use phone or brand name for web CTA as provided.";
   }
 }
 
@@ -154,23 +162,29 @@ CONSTRAINT ENGINE (mandatory):
 STRUCTURE (Hook–Body–CTA), woven naturally in speech:
 - Opening (≈ first 0–5s of read): one stop-scrolling hook tied to the viewer’s niche/problem.
 - Middle (≈ next ~20s of read): three distinct benefits or proof points grounded ONLY in provided source material and scene hints—not invented facts.
-- Close (≈ final ~10s): one strong CTA. Prefer the phone number OR the website the user actually provided—follow CTA PRIORITY rules in the user message. Mention at most one phone and one domain, only if supplied.
+- Close (≈ final ~10s): one strong CTA. Prefer the phone number OR steering people to the brand online—follow CTA PRIORITY rules in the user message. When the site is the CTA, name the company/brand only (e.g. "head to Acme" or "shop Northline today")—never read the URL, hostname, or "dot com" aloud. Mention at most one phone; do not spell out domains.
 
 STYLE:
 - Use vivid “power words” and concrete outcomes.
 - Ban empty corporate fluff (e.g. never “we provide excellent services”—instead “get the [specific outcome] you need”).
-- Vary sentence length; sound like a professional VO read, not a brochure.`;
+- Vary sentence length; sound like a professional VO read, not a brochure.
+
+GRAMMAR (non-negotiable):
+- Every sentence must be a complete, grammatical thought for speech. Never end on a stranded article, conjunction, or possessive (e.g. forbidden: “…of your.” “…what you.” “…comforts from.” “…enhance your.”)—always finish the clause or object (e.g. “…enhance your day.” “…every aspect of your life.”).`;
 
 const LENGTH_RECOVERY_SYSTEM = `You fix video ad voiceovers that are too short or too long.
 Output ONLY one continuous paragraph in plain English: no labels, no bullets, no quotes.
 The paragraph MUST be between 75 and 90 words inclusive—count carefully before answering.
-Ground every claim in the facts and page excerpt provided; do not invent awards or guarantees.`;
+Ground every claim in the facts and page excerpt provided; do not invent awards or guarantees.
+Fix any broken tail-off phrases: every sentence must end complete—never “…of your.” or “…what you.” without a following object or predicate.`;
 
 async function generateRaw(
   genAI: GoogleGenerativeAI,
   userPayload: string,
   systemBlock: string = ARCHITECT_SYSTEM,
+  logPhase = "master-voiceover",
 ): Promise<string> {
+  logGeminiRequest(logPhase, { model: getGeminiModelId() });
   const model = genAI.getGenerativeModel({
     model: getGeminiModelId(),
     generationConfig: {
@@ -260,7 +274,7 @@ function deterministicFallbackMasterScript(input: {
     );
   } else if (dom) {
     text = normalizeMasterScriptWhitespace(
-      `${text} Visit ${dom} today to learn more and move forward with confidence.`,
+      `${text} Visit ${company} online today to learn more and move forward with confidence.`,
     );
   } else {
     text = normalizeMasterScriptWhitespace(
@@ -275,9 +289,7 @@ function deterministicFallbackMasterScript(input: {
     guard += 1;
   }
   if (countMasterScriptWords(text) > MAX_WORDS) {
-    const w = text.split(/\s+/).filter(Boolean);
-    text = normalizeMasterScriptWhitespace(w.slice(0, MAX_WORDS).join(" "));
-    if (!/[.!?]$/.test(text)) text = `${text}.`;
+    text = capWordCountWithCleanEnding(text, MAX_WORDS, 20);
   }
   return text;
 }
@@ -305,22 +317,22 @@ function buildUserPayload(input: {
   const ctaAnalysis = describeUrlForCta(input.url);
   const ctaPriority =
     phone !== "(not provided)" && websiteLine !== "(not provided)"
-      ? `Both phone and site exist. ${ctaAnalysis} Choose ONE primary CTA plus optional short secondary (e.g. “Call … or visit …”) only if it fits word budget.`
+      ? `Both phone and site exist. ${ctaAnalysis} Choose ONE primary CTA plus optional short secondary only if it fits word budget. In spoken copy say the brand (“${company}”) or “online” / “their site”—never read ${websiteLine} or any hostname aloud.`
       : phone !== "(not provided)"
         ? `Primary CTA: call ${phone}.`
         : websiteLine !== "(not provided)"
-          ? `Primary CTA: visit ${websiteLine}.`
+          ? `Primary CTA: send people to ${company} online—do not speak the URL ${websiteLine} or “dot com”.`
           : `No phone or domain—end with a generic “learn more” style line without inventing numbers or URLs.`;
 
   return `INDUSTRY TONE (apply throughout):
 ${nicheToneBlock(input.niche)}
 
 BRAND FACTS:
-- Company / ad title: ${company}
-- Source URL: ${input.url}
+- Company / ad title (say this name in VO for web CTAs): ${company}
+- Source URL (context only—do NOT read aloud): ${input.url}
 - Title tag: ${input.title ?? "(none)"}
 - Phone (use verbatim if used): ${phone}
-- Website (use verbatim if used): ${websiteLine}
+- Website (for your reasoning only—spoken line must use "${company}", not this URL): ${websiteLine}
 
 CTA PRIORITY:
 ${ctaPriority}
@@ -342,7 +354,7 @@ function buildPolishPayload(
 ): string {
   return `Your previous script was ${wordCount} words. It MUST be ${MIN_WORDS}-${MAX_WORDS} words.
 
-Rewrite it: keep the same hook intent, the same three benefits (may tighten wording), and the same CTA choice (phone: ${phone}; site: ${domainLine}). Do not add new factual claims.
+Rewrite it: keep the same hook intent, the same three benefits (may tighten wording), and the same CTA intent (phone: ${phone}; web: refer to the brand by name only—do not speak ${domainLine} aloud). Do not add new factual claims.
 
 Previous script:
 ${previous}
@@ -382,6 +394,7 @@ async function runLengthRecoveryPasses(
             niche: ctx.niche,
           }),
           LENGTH_RECOVERY_SYSTEM,
+          "master-voiceover-length-recovery",
         ),
       ),
     );
@@ -423,9 +436,7 @@ export async function ensureMasterVoiceoverWordBudget(input: {
     const genAI = new GoogleGenerativeAI(key);
     text = await runLengthRecoveryPasses(genAI, text, ctx, 5);
     if (countMasterScriptWords(text) > MAX_WORDS) {
-      const w = text.split(/\s+/).filter(Boolean);
-      text = normalizeMasterScriptWhitespace(w.slice(0, MAX_WORDS).join(" "));
-      if (!/[.!?]$/.test(text)) text = `${text}.`;
+      text = capWordCountWithCleanEnding(text, MAX_WORDS, 20);
     }
   }
 
@@ -438,9 +449,7 @@ export async function ensureMasterVoiceoverWordBudget(input: {
   }
 
   if (countMasterScriptWords(text) > MAX_WORDS) {
-    const w = text.split(/\s+/).filter(Boolean);
-    text = normalizeMasterScriptWhitespace(w.slice(0, MAX_WORDS).join(" "));
-    if (!/[.!?]$/.test(text)) text = `${text}.`;
+    text = capWordCountWithCleanEnding(text, MAX_WORDS, 20);
   }
 
   return text;
@@ -486,6 +495,8 @@ export async function runNeuralScriptArchitect(input: {
           plan: input.plan,
           niche,
         }),
+        ARCHITECT_SYSTEM,
+        "master-voiceover-initial",
       ),
     ),
   );
@@ -511,6 +522,7 @@ export async function runNeuralScriptArchitect(input: {
             genAI,
             buildLengthRecoveryPayload({ ...ctx, seed: text }),
             LENGTH_RECOVERY_SYSTEM,
+            "master-voiceover-expand",
           ),
         ),
       );
@@ -521,6 +533,7 @@ export async function runNeuralScriptArchitect(input: {
             genAI,
             buildPolishPayload(text, words, phone, domainLine),
             ARCHITECT_SYSTEM,
+            "master-voiceover-trim",
           ),
         ),
       );
@@ -529,9 +542,7 @@ export async function runNeuralScriptArchitect(input: {
   }
 
   if (words > MAX_WORDS) {
-    const w = text.split(/\s+/).filter(Boolean);
-    text = normalizeMasterScriptWhitespace(w.slice(0, MAX_WORDS).join(" "));
-    if (!/[.!?]$/.test(text)) text = `${text}.`;
+    text = capWordCountWithCleanEnding(text, MAX_WORDS, 20);
     words = countMasterScriptWords(text);
   }
 
@@ -541,9 +552,7 @@ export async function runNeuralScriptArchitect(input: {
   }
 
   if (words > MAX_WORDS) {
-    const w = text.split(/\s+/).filter(Boolean);
-    text = normalizeMasterScriptWhitespace(w.slice(0, MAX_WORDS).join(" "));
-    if (!/[.!?]$/.test(text)) text = `${text}.`;
+    text = capWordCountWithCleanEnding(text, MAX_WORDS, 20);
     words = countMasterScriptWords(text);
   }
 

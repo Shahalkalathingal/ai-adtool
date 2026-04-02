@@ -11,7 +11,9 @@ const nextConfig: NextConfig = {
     : {}),
   transpilePackages: ["remotion", "@remotion/player", "@remotion/media"],
   serverExternalPackages: [
-    "ws",
+    "kokoro-js",
+    "@huggingface/transformers",
+    "onnxruntime-node",
     "@remotion/cli",
     "@remotion/vercel",
     "@vercel/blob",

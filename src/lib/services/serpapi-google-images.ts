@@ -54,7 +54,18 @@ export async function fetchGoogleImageUrls(
   const rows = json.images_results ?? [];
   const urls: string[] = [];
   for (const row of rows) {
-    const u = row.original ?? row.link ?? row.thumbnail;
+    let u = row.original ?? row.link;
+    if (typeof u !== "string" || !u.startsWith("https://")) {
+      const t = row.thumbnail;
+      if (typeof t === "string" && t.startsWith("https://")) {
+        const low = t.toLowerCase();
+        if (
+          !/thumb|thumbnail|=s\d{1,3}\b|\/\d{1,3}x\d{1,3}(\/|\.|$)/.test(low)
+        ) {
+          u = t;
+        }
+      }
+    }
     if (typeof u === "string" && u.startsWith("https://")) urls.push(u);
   }
   return urls;

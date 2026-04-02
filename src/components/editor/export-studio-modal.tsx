@@ -1,13 +1,14 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { Download, DownloadCloud } from "lucide-react";
+import { Check, Download, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { exportFilenameForBrand } from "@/lib/remotion/build-ad-studio-input-props";
 import { useTimelineStore } from "@/lib/stores/timeline-store";
 import { framesToSeconds } from "@/lib/types/timeline";
+import { VIBE_STUDIO } from "@/lib/ui/vibe-studio-tokens";
 import { resolveVideoDurationFrames } from "@/lib/voiceover/video-duration-policy";
 
 type Phase = "processing" | "delivery" | "error";
@@ -70,124 +71,17 @@ async function consumeExportSse(
   return donePayload;
 }
 
-const STATUS_STEPS = [
-  { until: 0.28, text: "🎬 Assembling Cinematic Transitions..." },
-  { until: 0.52, text: "🎙️ Mastering Voiceover Frequencies..." },
-  { until: 0.78, text: "✨ Applying Global Branding Layer..." },
-  { until: 1.01, text: "📦 Compiling MP4 Enterprise Asset..." },
-] as const;
-
-function statusLabel(progress01: number): string {
-  const p = Math.min(1, Math.max(0, progress01));
-  for (const step of STATUS_STEPS) {
-    if (p < step.until) return step.text;
-  }
-  return STATUS_STEPS[STATUS_STEPS.length - 1].text;
-}
-
-function hexToRgba(hex: string, alpha: number): string {
-  const h = hex.replace("#", "").trim();
-  if (h.length === 6) {
-    const r = Number.parseInt(h.slice(0, 2), 16);
-    const g = Number.parseInt(h.slice(2, 4), 16);
-    const b = Number.parseInt(h.slice(4, 6), 16);
-    if (!Number.isNaN(r + g + b)) return `rgba(${r},${g},${b},${alpha})`;
-  }
-  return `rgba(147, 51, 234, ${alpha})`;
-}
-
-function NeuralOrb() {
-  return (
-    <div className="relative mx-auto size-36 md:size-44">
-      <motion.div
-        className="absolute inset-0 rounded-full opacity-90"
-        style={{
-          background:
-            "conic-gradient(from 0deg, rgba(139,92,246,0.65), rgba(56,189,248,0.5), rgba(244,114,182,0.55), rgba(139,92,246,0.65))",
-          filter: "blur(14px)",
-        }}
-        animate={{ rotate: 360 }}
-        transition={{ duration: 8, repeat: Infinity, ease: "linear" }}
-      />
-      <motion.div
-        className="absolute inset-[18%] rounded-full border border-white/25 bg-white/[0.07]"
-        animate={{ scale: [1, 1.06, 1], opacity: [0.85, 1, 0.85] }}
-        transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut" }}
-      />
-      <motion.div
-        className="absolute inset-0 rounded-full border-2 border-dashed border-white/20"
-        animate={{ rotate: -360 }}
-        transition={{ duration: 14, repeat: Infinity, ease: "linear" }}
-      />
-      <div
-        className="absolute inset-[28%] rounded-full bg-gradient-to-br from-white/25 to-transparent"
-        style={{ boxShadow: "inset 0 0 40px rgba(255,255,255,0.12)" }}
-      />
-    </div>
-  );
-}
-
-function ExportConfetti({ active }: { active: boolean }) {
-  const pieces = useMemo(
-    () =>
-      Array.from({ length: 16 }, (_, i) => ({
-        id: i,
-        x: (Math.random() - 0.5) * 220,
-        y: -40 - Math.random() * 80,
-        rot: (Math.random() - 0.5) * 720,
-        delay: Math.random() * 0.12,
-        w: 6 + Math.random() * 8,
-        h: 10 + Math.random() * 14,
-        hue: [265, 200, 330, 145, 190][i % 5],
-      })),
-    [],
-  );
-
-  if (!active) return null;
-
-  return (
-    <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-2xl" aria-hidden>
-      {pieces.map((p) => (
-        <motion.span
-          key={p.id}
-          className="absolute left-1/2 top-[42%] -translate-x-1/2 rounded-[2px] bg-white"
-          style={{
-            width: p.w,
-            height: p.h,
-            backgroundColor: `hsla(${p.hue}, 85%, 62%, 0.95)`,
-            boxShadow: `0 0 12px hsla(${p.hue}, 90%, 55%, 0.7)`,
-          }}
-          initial={{ x: 0, y: 0, opacity: 1, rotate: 0, scale: 1 }}
-          animate={{
-            x: p.x,
-            y: p.y,
-            opacity: [1, 1, 0],
-            rotate: p.rot,
-            scale: [1, 1.15, 0.6],
-          }}
-          transition={{
-            duration: 1.25,
-            delay: p.delay,
-            ease: [0.22, 1, 0.36, 1],
-          }}
-        />
-      ))}
-      <motion.div
-        className="absolute inset-0 rounded-2xl bg-[radial-gradient(circle_at_50%_45%,rgba(255,255,255,0.14),transparent_58%)]"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: [0, 0.85, 0] }}
-        transition={{ duration: 0.85, ease: "easeOut" }}
-      />
-    </div>
-  );
-}
-
 type ExportStudioModalProps = {
   open: boolean;
   onClose: () => void;
+  projectId: string;
 };
 
-export function ExportStudioModal({ open, onClose }: ExportStudioModalProps) {
+export function ExportStudioModal({
+  open,
+  onClose,
+  projectId,
+}: ExportStudioModalProps) {
   const project = useTimelineStore((s) => s.project);
   const tracks = useTimelineStore((s) => s.tracks);
   const clipsById = useTimelineStore((s) => s.clipsById);
@@ -200,15 +94,19 @@ export function ExportStudioModal({ open, onClose }: ExportStudioModalProps) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [videoBlob, setVideoBlob] = useState<Blob | null>(null);
   const [statusPhase, setStatusPhase] = useState("");
-  const [celebrate, setCelebrate] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   const origin =
     typeof window !== "undefined" ? window.location.origin : "";
 
-  const brandPrimary = project.brandConfig.primaryColor || "#9333ea";
   const filename = useMemo(() => exportFilenameForBrand(project), [project]);
-  const glowShadow = `0 0 20px ${hexToRgba(brandPrimary, 0.45)}, 0 0 42px ${hexToRgba(brandPrimary, 0.22)}`;
+
+  const shareUrl = useMemo(() => {
+    if (!origin) return "";
+    const id = projectId.trim();
+    if (id && id !== "draft") return `${origin}/studio/${id}`;
+    return `${origin}/studio`;
+  }, [origin, projectId]);
 
   const runExport = useCallback(async (): Promise<void> => {
     if (!directorPlanApplied || durationInFrames < 1) {
@@ -225,7 +123,6 @@ export function ExportStudioModal({ open, onClose }: ExportStudioModalProps) {
     setErrorMessage(null);
     setVideoBlob(null);
     setStatusPhase("");
-    setCelebrate(false);
 
     const metadata = project.metadata as Record<string, unknown>;
     const voiceoverDurationSec =
@@ -272,10 +169,10 @@ export function ExportStudioModal({ open, onClose }: ExportStudioModalProps) {
       const { url } = await consumeExportSse(
         res,
         ac.signal,
-        (phase, progress, subtitle) => {
+        (phaseName, progress, subtitle) => {
           setProgress01(Math.min(1, Math.max(0, progress)));
           setStatusPhase(
-            subtitle ? `${phase} — ${subtitle}` : phase,
+            subtitle ? `${phaseName} — ${subtitle}` : phaseName,
           );
         },
       );
@@ -291,8 +188,6 @@ export function ExportStudioModal({ open, onClose }: ExportStudioModalProps) {
       setVideoBlob(blob);
       setProgress01(1);
       setPhase("delivery");
-      setCelebrate(true);
-      window.setTimeout(() => setCelebrate(false), 1400);
     } catch (e) {
       if ((e as Error)?.name === "AbortError") return;
       const msg =
@@ -334,7 +229,6 @@ export function ExportStudioModal({ open, onClose }: ExportStudioModalProps) {
       setErrorMessage(null);
       setVideoBlob(null);
       setStatusPhase("");
-      setCelebrate(false);
     }
   }, [open]);
 
@@ -352,7 +246,27 @@ export function ExportStudioModal({ open, onClose }: ExportStudioModalProps) {
     toast.success("Download started");
   };
 
+  const onCopyShareLink = async () => {
+    const url = shareUrl || window.location.href;
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success("Link copied");
+    } catch {
+      toast.error("Could not copy link");
+    }
+  };
+
+  const closeModal = () => {
+    abortRef.current?.abort();
+    onClose();
+  };
+
   if (!open) return null;
+
+  const primaryIndigoBtn =
+    "h-12 w-full rounded-lg border-0 text-sm font-semibold text-white shadow-[0_12px_36px_rgba(79,70,229,0.38)] hover:opacity-[0.96]";
+  const accentVioletBtn =
+    "h-12 w-full rounded-lg border-0 text-sm font-semibold text-white shadow-[0_12px_36px_rgba(124,58,237,0.4)] hover:opacity-[0.96]";
 
   return (
     <div
@@ -362,141 +276,131 @@ export function ExportStudioModal({ open, onClose }: ExportStudioModalProps) {
       aria-labelledby="export-studio-title"
     >
       <motion.div
-        className="absolute inset-0 bg-black/90 backdrop-blur-3xl"
+        className="absolute inset-0 bg-black/55 backdrop-blur-md"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         role="presentation"
-        onClick={() => {
-          abortRef.current?.abort();
-          onClose();
-        }}
+        onClick={closeModal}
       />
 
       <motion.div
-        className="relative z-10 w-[60%] min-w-[min(100%,20rem)] max-w-[60rem] rounded-2xl border border-white/10 bg-zinc-950/55 p-8 shadow-[0_40px_120px_rgba(0,0,0,0.65)] backdrop-blur-2xl md:p-10"
-        initial={{ opacity: 0, scale: 0.96, y: 16 }}
+        className="relative z-10 w-full max-w-lg rounded-xl border p-8 shadow-[0_24px_80px_rgba(0,0,0,0.55)] md:p-10"
+        style={{
+          backgroundColor: VIBE_STUDIO.canvasBg,
+          borderColor: VIBE_STUDIO.borderSubtle,
+        }}
+        initial={{ opacity: 0, scale: 0.98, y: 12 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        transition={{ type: "spring", damping: 26, stiffness: 280 }}
+        transition={{ type: "spring", damping: 28, stiffness: 320 }}
         onClick={(e) => e.stopPropagation()}
       >
-        <ExportConfetti active={celebrate} />
-
-        <h2
-          id="export-studio-title"
-          className="text-center text-[11px] font-semibold uppercase tracking-[0.35em] text-white/50"
+        <button
+          type="button"
+          className="absolute right-4 top-4 rounded-md p-1.5 text-[#b3b3b3] transition hover:bg-white/[0.06] hover:text-white"
+          aria-label="Close"
+          onClick={closeModal}
         >
-          Neural processing
-        </h2>
+          <X className="size-5" strokeWidth={1.5} />
+        </button>
+
+        <p id="export-studio-title" className="sr-only">
+          {phase === "processing"
+            ? "Your video is being prepared"
+            : phase === "delivery"
+              ? "Your video is ready"
+              : "Export error"}
+        </p>
+        <span className="sr-only" aria-live="polite">
+          {phase === "processing"
+            ? `${statusPhase || "Preparing video"} ${Math.round(progress01 * 100)}%`
+            : ""}
+        </span>
 
         <AnimatePresence mode="wait">
           {phase === "processing" ? (
             <motion.div
               key="proc"
-              className="mt-8 flex flex-col items-center gap-8"
+              className="flex flex-col items-center gap-6 pt-2"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
             >
-              <NeuralOrb />
-
-              <div className="w-full max-w-md space-y-3">
-                <div className="relative h-3 w-full overflow-hidden rounded-full bg-white/[0.08] ring-1 ring-white/10">
-                  <motion.div
-                    className="h-full rounded-full bg-gradient-to-r from-violet-400 via-fuchsia-400 to-cyan-400 bg-[length:200%_100%]"
-                    style={{
-                      width: `${Math.round(progress01 * 100)}%`,
-                      boxShadow: "0 0 24px rgba(167,139,250,0.45)",
-                    }}
-                    animate={{
-                      backgroundPosition: ["0% 50%", "100% 50%", "0% 50%"],
-                    }}
-                    transition={{
-                      backgroundPosition: {
-                        duration: 2.5,
-                        repeat: Infinity,
-                        ease: "linear",
-                      },
-                    }}
-                  />
-                </div>
-                <p className="min-h-[3.25rem] text-center text-sm font-medium leading-relaxed text-white/85">
-                  {statusPhase || statusLabel(progress01)}
-                </p>
-                <p className="text-center font-mono text-xs tabular-nums text-white/40">
-                  {Math.round(progress01 * 100)}%
-                </p>
-              </div>
+              <div
+                className="mx-auto size-14 shrink-0 rounded-full border-2 border-white/20 border-t-white animate-spin"
+                role="status"
+                aria-label="Preparing video"
+              />
+              <h2 className="text-center text-lg font-bold leading-snug tracking-tight text-white md:text-xl">
+                Your video is being prepared! While you wait, share it with your
+                team or on social media using this link.
+              </h2>
+              <p className="max-w-md text-center text-sm leading-relaxed text-[#b3b3b3]">
+                Share your video to gather feedback, refine it with valuable
+                external perspectives, and attract potential new customers.
+              </p>
+              <Button
+                type="button"
+                className={accentVioletBtn}
+                style={{ backgroundColor: VIBE_STUDIO.logoMark }}
+                onClick={() => void onCopyShareLink()}
+              >
+                Copy sharing link
+              </Button>
             </motion.div>
           ) : null}
 
           {phase === "delivery" ? (
             <motion.div
               key="del"
-              className="mt-8 flex flex-col items-center gap-8"
+              className="flex flex-col items-center gap-6 pt-2"
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0 }}
             >
-              <motion.div
-                animate={{
-                  scale: [1, 1.04, 1],
-                  filter: [
-                    "drop-shadow(0 0 28px rgba(167,139,250,0.55))",
-                    "drop-shadow(0 0 44px rgba(56,189,248,0.5))",
-                    "drop-shadow(0 0 28px rgba(167,139,250,0.55))",
-                  ],
-                }}
-                transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
+              <div
+                className="flex size-16 items-center justify-center rounded-full border-2 border-white"
+                aria-hidden
               >
-                <DownloadCloud
-                  className="size-24 text-white md:size-28"
-                  strokeWidth={1.15}
-                />
-              </motion.div>
-
-              <div className="flex w-full max-w-md flex-col gap-3">
-                <Button
-                  type="button"
-                  size="lg"
-                  className="h-14 w-full border-0 text-sm font-bold uppercase tracking-[0.14em] text-black shadow-lg md:text-base"
-                  style={{
-                    backgroundColor: brandPrimary,
-                    boxShadow: glowShadow,
-                  }}
-                  onClick={onDownload}
-                >
-                  <Download className="mr-2 size-5" aria-hidden />
-                  Download AD (MP4)
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="h-11 w-full border border-white/20 bg-white/[0.04] text-white/90 hover:bg-white/10"
-                  onClick={onClose}
-                >
-                  Back to studio
-                </Button>
+                <Check className="size-8 text-white" strokeWidth={2} />
               </div>
-              <p className="max-w-sm text-center text-xs text-white/45">{filename}</p>
+              <h2 className="text-center text-xl font-bold tracking-tight text-white">
+                Your video is ready
+              </h2>
+              <p className="max-w-md text-center text-sm leading-relaxed text-[#b3b3b3]">
+                Download your video and upload it on the platform to kickstart
+                your campaign
+              </p>
+              <Button
+                type="button"
+                className={`${primaryIndigoBtn} flex items-center justify-center gap-2`}
+                style={{ backgroundColor: VIBE_STUDIO.saveCta }}
+                onClick={onDownload}
+              >
+                <span>Download video</span>
+                <Download className="size-5 shrink-0" aria-hidden />
+              </Button>
+              <p className="max-w-sm text-center text-[10px] text-[#b3b3b3]/80">
+                {filename}
+              </p>
             </motion.div>
           ) : null}
 
           {phase === "error" ? (
             <motion.div
               key="err"
-              className="mt-8 space-y-6 text-center"
+              className="space-y-6 pt-2 text-center"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
             >
-              <p className="text-sm text-red-200/90">
+              <p className="text-sm font-medium text-red-300/95">
                 {errorMessage ?? "Export failed."}
               </p>
-              <p className="text-xs leading-relaxed text-white/50">
+              <p className="text-xs leading-relaxed text-[#b3b3b3]">
                 Export uses{" "}
                 <a
-                  className="text-violet-300 underline underline-offset-2 hover:text-violet-200"
+                  className="text-white underline underline-offset-2 hover:text-white/80"
                   href="https://www.remotion.dev/docs/vercel-sandbox"
                   target="_blank"
                   rel="noopener noreferrer"
@@ -504,23 +408,43 @@ export function ExportStudioModal({ open, onClose }: ExportStudioModalProps) {
                   Remotion + Vercel Sandbox
                 </a>
                 . You need{" "}
-                <span className="font-mono text-white/70">BLOB_READ_WRITE_TOKEN</span>{" "}
+                <span className="font-mono text-white/80">
+                  BLOB_READ_WRITE_TOKEN
+                </span>{" "}
                 for Blob, and for{" "}
-                <strong className="text-white/70">local dev</strong> also{" "}
-                <span className="font-mono text-white/70">VERCEL_OIDC_TOKEN</span> from{" "}
-                <span className="font-mono text-white/70">npx vercel link</span> +{" "}
-                <span className="font-mono text-white/70">npx vercel env pull</span>. On
-                Vercel, use{" "}
-                <span className="font-mono text-white/70">
+                <strong className="text-white/90">local dev</strong> also{" "}
+                <span className="font-mono text-white/80">
+                  VERCEL_OIDC_TOKEN
+                </span>{" "}
+                from{" "}
+                <span className="font-mono text-white/80">
+                  npx vercel link
+                </span>{" "}
+                +{" "}
+                <span className="font-mono text-white/80">
+                  npx vercel env pull
+                </span>
+                . On Vercel, use{" "}
+                <span className="font-mono text-white/80">
                   {`npm run vercel:remotion-snapshot && npm run build`}
                 </span>
-                . See <span className="font-mono text-white/70">.env.example</span>.
+                . See <span className="font-mono text-white/80">.env.example</span>.
               </p>
               <div className="flex flex-wrap justify-center gap-3">
-                <Button type="button" onClick={() => void runExport()}>
+                <Button
+                  type="button"
+                  className="rounded-lg text-white"
+                  style={{ backgroundColor: VIBE_STUDIO.logoMark }}
+                  onClick={() => void runExport()}
+                >
                   Retry
                 </Button>
-                <Button type="button" variant="outline" onClick={onClose}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="rounded-lg border-white/15 bg-transparent text-white hover:bg-white/[0.06]"
+                  onClick={closeModal}
+                >
                   Close
                 </Button>
               </div>

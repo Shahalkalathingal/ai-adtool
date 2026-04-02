@@ -20,6 +20,8 @@ type StudioEntranceState = {
   initialUrl: string;
   /** Per-launch project id so each session writes isolated media. */
   initialProjectId: string;
+  /** Seed URL + project id for the studio without triggering the cinematic overlay. */
+  seedEntrance: (url: string, projectId: string) => void;
   beginEntrance: (url?: string, projectId?: string) => void;
   setPhase: (phase: StudioEntrancePhase) => void;
 };
@@ -29,6 +31,11 @@ export const useStudioEntranceStore = create<StudioEntranceState>((set) => ({
   isInitializing: false,
   initialUrl: "",
   initialProjectId: "",
+  seedEntrance: (url, projectId) =>
+    set({
+      initialUrl: url?.trim() ?? "",
+      initialProjectId: projectId?.trim() ?? "",
+    }),
   beginEntrance: (url, projectId) =>
     set({
       phase: "ignition",

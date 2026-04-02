@@ -6,6 +6,7 @@ import {
 } from "@/lib/types/director-plan";
 import type { ScrapedPageIntel } from "@/lib/services/firecrawl-scrape";
 import { getGeminiModelId } from "@/lib/services/gemini-model";
+import { logGeminiRequest } from "@/lib/services/gemini-request-log";
 
 function buildPrompt(input: {
   url: string;
@@ -60,14 +61,16 @@ Goal: design a 16:9 (landscape) video ad of at least 30 seconds total, with conf
 Strict rules:
 - totalDurationSec must be 35.
 - exactly 7 scenes; each scene durationSec must be 5.
-- scene index 6 (the LAST scene) is the end screen CTA scene, with ad-style direct response copy (e.g. urgency + visit domain + act now).
-- last scene headline and voiceover must include a strong call-to-action that references the brand domain when available.
+- scene index 6 (the LAST scene) is the end screen CTA scene, with ad-style direct response copy (e.g. urgency + clear next step + act now).
+- last scene headline and voiceover must include a strong call-to-action. Headlines may imply the website; voiceover is SPOKEN—use the brand or company name for online CTAs, not a raw URL or hostname.
 - voiceover for EACH scene must be exactly ONE sentence (no line breaks, no paragraph), designed to fit ~5 seconds at normal speech speed.
-- keep it punchy and high-CTR friendly; include the brand domain in the last scene CTA sentence when available.
+- Each voiceover sentence MUST be grammatically complete for TTS. Never end mid-phrase on words like "your", "you", "from", "the", "what", "of" without finishing the thought (forbidden: "...every aspect of your." "...what you." "...comforts from." — use a full object or predicate, e.g. "...every aspect of your routine.").
+- SPOKEN COPY (every scene voiceover): never say full URLs, paths, "www", or TLDs like "dot com"—say the natural brand name (e.g. "Amazon" not "Amazon.com"; "Nike" not "nike.com"). Phone numbers may be spoken verbatim if included.
+- keep it punchy and high-CTR friendly; last scene voiceover should drive action using the brand name (and phone if relevant), not reading the domain string.
 - 16:9 framing — headlines are lower-third safe; visuals are product/lifestyle.
 - scrapedBrand must contain ONLY these fields when known from hints (no markdown, no random URLs in address):
   companyName, cleanAddress (one line street/city/state/zip), phoneNumber (formatted), logoUrl (https image), primaryDomain (hostname only, no path).
-- productImageUrls: MUST include 8 to 10 DISTINCT https URLs of real product/lifestyle images. Prefer URLs listed in "Image URL candidates" (these may include supplemental Google Image results merged by the server — treat every listed https image URL as usable). When a candidate clearly matches the brand or scene, prefer it over inventing URLs. Do NOT invent random-looking domains; prefer given candidates, then the source URL host. If fewer than 8 distinct URLs exist in hints, repeat the best URLs to reach 8 (still list 8–10 strings).
+- productImageUrls: MUST include 8 to 10 DISTINCT https URLs of sharp product/lifestyle stills suitable for 16:9. The "Image URL candidates" list is ordered by the server: **high-resolution, category-appropriate stock (often Unsplash) may appear first when on-page grabs are weak** — prefer those over tiny, blurry, or irrelevant blog/nav images even if they came from the site. Use on-page URLs only when they look like real product or brand photography (not icons, thumbs, or random editorial). Do NOT invent domains. If fewer than 8 distinct winners exist, repeat the best URLs to reach 8 (still list 8–10 strings).
 - Each scene may set imageUrl to pin a specific still, or omit to cycle productImageUrls by scene index.
 
 JSON shape (strict field names):
@@ -162,6 +165,9 @@ export async function runGeminiDirector(input: {
     },
   });
 
+  logGeminiRequest("director-plan", {
+    model: getGeminiModelId(),
+  });
   const result = await model.generateContent(buildPrompt(input));
   const text = result.response.text();
   const jsonText = extractJsonObject(text);

@@ -2,15 +2,16 @@
 
 import {
   Film,
-  Loader2,
   Mic2,
   Music2,
   PanelBottom,
+  Pause,
+  Play,
   QrCode,
 } from "lucide-react";
+import type { CSSProperties } from "react";
 import { useEffect, useMemo, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
-import { toast } from "sonner";
+import { motion } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
@@ -20,9 +21,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { generateVoiceoverFromTimelineJson } from "@/app/actions/voiceover-actions";
 import { ClipMediaType } from "@/generated/prisma/enums";
-import { serializeTimelineState } from "@/lib/timeline/serialize";
 import {
   findClipsForSceneIndex,
   getEndSceneVisualClip,
@@ -31,17 +30,38 @@ import {
 } from "@/lib/timeline/scene-utils";
 import { framesToSeconds } from "@/lib/types/timeline";
 import { useTimelineStore } from "@/lib/stores/timeline-store";
-import { playSuccessChime } from "@/lib/ui/sfx";
-import { readAudioDurationSec } from "@/lib/audio/read-audio-duration";
+import { VIBE_STUDIO } from "@/lib/ui/vibe-studio-tokens";
 import { MASTER_VOICEOVER_MIN_WORDS } from "@/lib/voiceover/master-script-policy";
 import { cn } from "@/lib/utils";
 
-const laneAccent: Record<string, string> = {
-  visual: "border-l-violet-500/90",
-  text: "border-l-sky-500/90",
-  music: "border-l-emerald-500/90",
-  voice: "border-l-amber-500/90",
-};
+function formatTimecode(seconds: number): string {
+  const s = Math.max(0, seconds);
+  const m = Math.floor(s / 60);
+  const sec = Math.floor(s % 60);
+  return `${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+}
+
+function vibeLaneLabel(lane: string, trackName: string | null | undefined): string {
+  switch (lane) {
+    case "music":
+      return "MUSIC";
+    case "voice":
+      return "VOICE & SCRIPT";
+    default:
+      return (trackName ?? lane).toUpperCase();
+  }
+}
+
+function laneBorderStyle(lane: string): CSSProperties {
+  switch (lane) {
+    case "music":
+      return { borderLeftColor: VIBE_STUDIO.music };
+    case "voice":
+      return { borderLeftColor: VIBE_STUDIO.voice };
+    default:
+      return { borderLeftColor: "rgba(255,255,255,0.22)" };
+  }
+}
 
 function ClipThumb({
   clip,
@@ -76,8 +96,11 @@ function ClipThumb({
   }
   if (lane === "voice" || clip.mediaType === ClipMediaType.VOICEOVER) {
     return (
-      <div className="flex size-7 shrink-0 items-center justify-center rounded-sm border border-amber-500/40 bg-amber-500/10">
-        <Mic2 className="size-3.5 text-amber-200/90" />
+      <div
+        className="flex size-7 shrink-0 items-center justify-center rounded-sm border bg-white/[0.06]"
+        style={{ borderColor: `${VIBE_STUDIO.voice}66` }}
+      >
+        <Mic2 className="size-3.5 text-white/90" />
       </div>
     );
   }
@@ -90,8 +113,11 @@ function ClipThumb({
   }
   if (lane === "music") {
     return (
-      <div className="flex size-7 shrink-0 items-center justify-center rounded-sm border border-emerald-500/35 bg-emerald-500/10">
-        <Music2 className="size-3.5 text-emerald-200/90" />
+      <div
+        className="flex size-7 shrink-0 items-center justify-center rounded-sm border bg-white/[0.06]"
+        style={{ borderColor: `${VIBE_STUDIO.music}88` }}
+      >
+        <Music2 className="size-3.5 text-white/90" />
       </div>
     );
   }
@@ -151,21 +177,28 @@ function TimelineClipBar({ clipId, totalSec, lane, projectId }: TimelineClipProp
     lane === "voice" || clip.mediaType === ClipMediaType.VOICEOVER;
   const fillRatio = isVoice ? voiceScriptFillRatio(clip) : 0;
 
+  const laneBarTint =
+    lane === "music"
+      ? { backgroundColor: `${VIBE_STUDIO.music}2e`, borderColor: `${VIBE_STUDIO.music}88` }
+      : isVoice
+        ? { backgroundColor: `${VIBE_STUDIO.voice}2e`, borderColor: `${VIBE_STUDIO.voice}88` }
+        : { backgroundColor: "rgba(255,255,255,0.06)", borderColor: "rgba(255,255,255,0.14)" };
+
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <div
           className={cn(
-            "absolute top-1 bottom-1 flex rounded-md border text-left",
-            "border-border/90 bg-background/55 shadow-sm backdrop-blur-md",
-            "ring-1 ring-white/5 transition-colors",
-            selected && "ring-2 ring-primary/80",
+            "absolute top-1 bottom-1 flex rounded-md border text-left shadow-sm",
+            "ring-1 ring-white/[0.05] transition-colors",
+            selected && "ring-2 ring-white/35",
             "overflow-hidden",
             "group",
           )}
           style={{
             left: `calc(${left}% + 1px)`,
             width: `calc(${Math.max(width, 1.1)}% - 2px)`,
+            ...laneBarTint,
           }}
           onPointerDown={() => selectClipWithStudioTab(clipId)}
         >
@@ -174,19 +207,21 @@ function TimelineClipBar({ clipId, totalSec, lane, projectId }: TimelineClipProp
             {isVoice ? (
               <>
                 <div
-                  className="pointer-events-none absolute inset-y-1 left-1 overflow-hidden rounded-sm bg-amber-500/15"
-                  style={{ width: `calc(${fillRatio * 100}% - 4px)` }}
+                  className="pointer-events-none absolute inset-y-1 left-1 overflow-hidden rounded-sm"
+                  style={{
+                    width: `calc(${fillRatio * 100}% - 4px)`,
+                    backgroundColor: `${VIBE_STUDIO.voice}44`,
+                  }}
                 />
                 <div
-                  className="pointer-events-none absolute inset-y-1 left-1 right-1 rounded-sm opacity-45"
+                  className="pointer-events-none absolute inset-y-1 left-1 right-1 rounded-sm opacity-40"
                   style={{
-                    backgroundImage:
-                      "repeating-linear-gradient(90deg, rgba(251,191,36,0.55) 0px, rgba(251,191,36,0.55) 2px, transparent 2px, transparent 6px)",
+                    backgroundImage: `repeating-linear-gradient(90deg, ${VIBE_STUDIO.voice}99 0px, ${VIBE_STUDIO.voice}99 2px, transparent 2px, transparent 6px)`,
                   }}
                 />
               </>
             ) : null}
-            <span className="relative line-clamp-2 text-[10px] font-medium leading-tight text-foreground/95">
+            <span className="relative line-clamp-2 text-[10px] font-medium leading-tight text-white/85">
               {clip.label ?? clip.mediaType}
             </span>
           </div>
@@ -247,11 +282,10 @@ function SceneStripBar({ visualClipId, totalSec, projectId }: SceneStripBarProps
       <TooltipTrigger asChild>
         <div
           className={cn(
-            "absolute top-1 bottom-1 flex rounded-md border text-left",
-            "border-border/90 bg-background/55 shadow-sm backdrop-blur-md",
-            "ring-1 ring-white/5 transition-colors",
-            selected && "ring-2 ring-primary/80",
-            isEnd && "border-amber-500/35 bg-amber-950/15",
+            "absolute top-1 bottom-1 flex rounded-md border text-left shadow-sm",
+            "border-white/12 bg-white/[0.07] ring-1 ring-white/[0.06] transition-colors",
+            selected && "ring-2 ring-white/35",
+            isEnd && "border-amber-400/40 bg-amber-950/20",
             "overflow-hidden",
           )}
           style={{
@@ -264,7 +298,7 @@ function SceneStripBar({ visualClipId, totalSec, projectId }: SceneStripBarProps
         >
           <div className="relative flex min-w-0 flex-1 items-center gap-1 px-1.5 py-0.5">
             <ClipThumb clip={clip} lane="visual" />
-            <span className="relative line-clamp-2 text-[10px] font-medium leading-tight text-foreground/95">
+            <span className="relative line-clamp-2 text-[10px] font-medium leading-tight text-white/85">
               {isEnd ? "End screen" : (clip.label ?? "Scene")}
             </span>
           </div>
@@ -298,41 +332,23 @@ export function MultiTrackTimeline({ projectId }: MultiTrackTimelineProps) {
   const playheadFrame = useTimelineStore((s) => s.playheadFrame);
   const setPlayheadFrame = useTimelineStore((s) => s.setPlayheadFrame);
   const setIsPlaying = useTimelineStore((s) => s.setIsPlaying);
+  const isPlaying = useTimelineStore((s) => s.isPlaying);
+  const togglePlayback = useTimelineStore((s) => s.togglePlayback);
   const setStudioPanel = useTimelineStore((s) => s.setStudioPanel);
   const setSelectedClipId = useTimelineStore((s) => s.setSelectedClipId);
   const project = useTimelineStore((s) => s.project);
-  const setVoiceoverAsset = useTimelineStore((s) => s.setVoiceoverAsset);
-  const beginVoiceoverSwap = useTimelineStore((s) => s.beginVoiceoverSwap);
-  const setVoiceoverSyncBusy = useTimelineStore((s) => s.setVoiceoverSyncBusy);
-  const voiceoverSyncBusy = useTimelineStore((s) => s.voiceoverSyncBusy);
-  const [voBusy, setVoBusy] = useState(false);
   const [voiceLaneFlash, setVoiceLaneFlash] = useState(false);
   const [musicLaneFlash, setMusicLaneFlash] = useState(false);
-  const [statusIndex, setStatusIndex] = useState(0);
 
   const totalSec = framesToSeconds(durationInFrames, fps);
   const playheadSec = framesToSeconds(playheadFrame, fps);
+  const playheadPct = totalSec > 0 ? (playheadSec / totalSec) * 100 : 0;
   const masterScript =
     typeof project.metadata.masterVoiceoverScript === "string"
       ? project.metadata.masterVoiceoverScript
       : "";
   const words = masterScript.trim().split(/\s+/).filter(Boolean).length;
   const minWords = MASTER_VOICEOVER_MIN_WORDS;
-  const hasVoiceoverAudio =
-    typeof project.metadata.voiceoverAudioUrl === "string" &&
-    project.metadata.voiceoverAudioUrl.trim().length > 0;
-  const brandPrimary =
-    (typeof project.brandConfig.primaryColor === "string" &&
-      project.brandConfig.primaryColor) ||
-    "#f43f5e";
-  const statuses = useMemo(
-    () => [
-      "🎙️ Synthesizing Natural Inflections...",
-      "🧠 Aligning Script to Scene Pacing...",
-      "✨ Polishing Audio Clarity...",
-    ],
-    [],
-  );
   const voiceoverFlashAt =
     typeof project.metadata.voiceoverFlashAt === "number"
       ? project.metadata.voiceoverFlashAt
@@ -341,14 +357,6 @@ export function MultiTrackTimeline({ projectId }: MultiTrackTimelineProps) {
     typeof project.metadata.musicFlashAt === "number"
       ? project.metadata.musicFlashAt
       : 0;
-
-  useEffect(() => {
-    if (!voBusy) return;
-    const id = window.setInterval(() => {
-      setStatusIndex((i) => (i + 1) % statuses.length);
-    }, 1500);
-    return () => window.clearInterval(id);
-  }, [voBusy, statuses.length]);
 
   useEffect(() => {
     if (!voiceoverFlashAt) return;
@@ -363,29 +371,6 @@ export function MultiTrackTimeline({ projectId }: MultiTrackTimelineProps) {
     const id = window.setTimeout(() => setMusicLaneFlash(false), 700);
     return () => window.clearTimeout(id);
   }, [musicFlashAt]);
-
-  async function onGenerateFullVoiceover() {
-    setVoBusy(true);
-    beginVoiceoverSwap();
-    setStatusIndex(0);
-    try {
-      const state = useTimelineStore.getState();
-      const json = JSON.stringify(serializeTimelineState(state));
-      const res = await generateVoiceoverFromTimelineJson(projectId, json);
-      if (!res.ok) {
-        setVoiceoverSyncBusy(false);
-        toast.error("Voiceover failed", { description: res.error });
-        return;
-      }
-      const measuredSec = await readAudioDurationSec(res.publicUrl);
-      setVoiceoverAsset(res.publicUrl, measuredSec ?? res.durationSecEstimate);
-      toast.success("Full voiceover generated");
-      playSuccessChime();
-    } finally {
-      setVoiceoverSyncBusy(false);
-      setVoBusy(false);
-    }
-  }
 
   const sorted = [...tracks].sort((a, b) => a.index - b.index);
   const regularScenes = useMemo(
@@ -413,221 +398,319 @@ export function MultiTrackTimeline({ projectId }: MultiTrackTimelineProps) {
   );
 
   return (
-    <div className="relative space-y-3">
+    <div className="relative space-y-2.5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+          <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/45">
             Timeline
           </span>
-          <Badge variant="secondary" className="font-mono text-[10px]">
+          <Badge
+            variant="secondary"
+            className="border-white/10 bg-white/[0.06] font-mono text-[9px] text-white/55"
+          >
             {totalSec.toFixed(1)}s · {fps} fps
           </Badge>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-8 gap-1.5 border-border/80 bg-background/40 text-[11px] backdrop-blur-sm"
-            disabled={voBusy || voiceoverSyncBusy || words < minWords}
-            onClick={() => void onGenerateFullVoiceover()}
-          >
-            {voBusy ? (
-              <Loader2 className="size-3.5 animate-spin" />
-            ) : (
-              <Mic2 className="size-3.5" />
-            )}
-            {hasVoiceoverAudio ? "Update Full Voiceover" : "Generate Full Voiceover"}
-          </Button>
         </div>
       </div>
       {words < minWords ? (
-        <p className="text-[11px] leading-relaxed text-amber-300/90">
-          Add at least {minWords} words so voiceover covers the full timeline, including the
-          end screen. Open <span className="font-medium text-foreground/90">Voice &amp; script</span>{" "}
-          to edit the master script.
+        <p className="text-[11px] leading-relaxed text-amber-300/85">
+          Add at least {minWords} words for voiceover. Open{" "}
+          <span className="font-medium text-white/90">Voice &amp; script</span> — narration
+          generates automatically when the timeline loads.
         </p>
       ) : null}
 
-      <ScrollArea className="max-h-[238px] w-full">
-        <div className="min-w-[720px] space-y-0 pr-4">
-          <div
-            className={cn(
-              "flex border-b border-border/60 bg-muted/10",
-              "border-l-2",
-              laneAccent.visual,
-            )}
+      <div
+        className="flex max-h-[280px] min-h-0 w-full overflow-hidden rounded-lg border"
+        style={{ borderColor: VIBE_STUDIO.borderSubtle }}
+      >
+        <div
+          className="flex w-[56px] shrink-0 flex-col items-center gap-2 border-r py-3"
+          style={{
+            borderColor: VIBE_STUDIO.borderSubtle,
+            backgroundColor: VIBE_STUDIO.panelBg,
+          }}
+        >
+          <Button
+            type="button"
+            size="icon"
+            variant="secondary"
+            className="size-11 shrink-0 rounded-full border-0 bg-white text-black shadow-none hover:bg-white/90"
+            aria-label={isPlaying ? "Pause" : "Play"}
+            onClick={() => togglePlayback()}
           >
-            <div className="flex w-36 shrink-0 items-center gap-2 border-r border-border/60 bg-sidebar/35 px-2 py-2 backdrop-blur-sm">
-              <Film className="size-3.5 text-muted-foreground" />
-              <span className="truncate text-[11px] font-medium text-foreground/90">
-                Scenes
-              </span>
-            </div>
-            <div className="timeline-row-area relative min-h-11 flex-1 touch-none select-none">
-              {sceneBlocksForStrip.map((c) => (
-                <SceneStripBar
-                  key={c.id}
-                  visualClipId={c.id}
-                  totalSec={totalSec}
-                  projectId={projectId}
+            {isPlaying ? (
+              <Pause className="size-5 text-black" fill="currentColor" />
+            ) : (
+              <Play className="size-5 pl-0.5 text-black" fill="currentColor" />
+            )}
+          </Button>
+          <span className="font-mono text-[11px] tabular-nums text-[#b3b3b3]">
+            {formatTimecode(playheadSec)}
+          </span>
+        </div>
+
+        <ScrollArea className="min-h-0 min-w-0 flex-1">
+          <div className="min-w-[720px] space-y-0 pr-3">
+            <div
+              className="flex border-b border-l-[3px] border-solid"
+              style={{
+                borderBottomColor: VIBE_STUDIO.borderSubtle,
+                borderLeftColor: "rgba(255,255,255,0.18)",
+                backgroundColor: VIBE_STUDIO.panelBg,
+              }}
+            >
+              <div
+                className="flex w-[148px] shrink-0 items-center gap-2 border-r px-2.5 py-2"
+                style={{
+                  borderColor: VIBE_STUDIO.borderSubtle,
+                  backgroundColor: VIBE_STUDIO.panelBg,
+                }}
+              >
+                <Film className="size-3.5 text-[#b3b3b3]" />
+                <span className="truncate text-[10px] font-semibold uppercase tracking-[0.14em] text-[#b3b3b3]">
+                  Slideshow
+                </span>
+              </div>
+              <div
+                className="timeline-row-area relative min-h-11 flex-1 touch-none select-none"
+                style={{ backgroundColor: VIBE_STUDIO.canvasBg }}
+              >
+                {sceneBlocksForStrip.map((c) => (
+                  <SceneStripBar
+                    key={c.id}
+                    visualClipId={c.id}
+                    totalSec={totalSec}
+                    projectId={projectId}
+                  />
+                ))}
+                <div
+                  className="pointer-events-none absolute z-30"
+                  style={{
+                    left: `${playheadPct}%`,
+                    top: -6,
+                    transform: "translateX(-50%)",
+                    width: 0,
+                    height: 0,
+                    borderLeft: "6px solid transparent",
+                    borderRight: "6px solid transparent",
+                    borderTop: `7px solid ${VIBE_STUDIO.playhead}`,
+                  }}
                 />
-              ))}
+                <div
+                  className="pointer-events-none absolute top-0 bottom-0 z-20 w-px"
+                  style={{
+                    left: `${playheadPct}%`,
+                    backgroundColor: VIBE_STUDIO.playhead,
+                    boxShadow: `0 0 12px ${VIBE_STUDIO.playhead}`,
+                  }}
+                />
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedClipId(null);
+                setStudioPanel("bottomBanner");
+              }}
+              className="flex w-full border-b border-l-[3px] border-solid text-left transition-colors hover:brightness-110"
+              style={{
+                borderBottomColor: VIBE_STUDIO.borderSubtle,
+                borderLeftColor: VIBE_STUDIO.bottomBanner,
+                backgroundColor: VIBE_STUDIO.panelBg,
+              }}
+            >
               <div
-                className="pointer-events-none absolute top-0 bottom-0 z-20 w-[2px] bg-rose-500/90 shadow-[0_0_18px_rgba(244,63,94,0.75)]"
+                className="flex w-[148px] shrink-0 items-center gap-2 border-r px-2.5 py-2"
                 style={{
-                  left: `${totalSec > 0 ? (playheadSec / totalSec) * 100 : 0}%`,
+                  borderColor: VIBE_STUDIO.borderSubtle,
+                  backgroundColor: VIBE_STUDIO.panelBg,
                 }}
-              />
-            </div>
-          </div>
-
-          {/* Static overlay lanes (Bottom banner + QR code) to match the Studio reference. */}
-          <button
-            type="button"
-            onClick={() => {
-              setSelectedClipId(null);
-              setStudioPanel("bottomBanner");
-            }}
-            className={cn(
-              "flex w-full border-b border-border/60 bg-muted/10 text-left",
-              "border-l-2",
-              "border-l-violet-500/90",
-              "hover:bg-violet-500/10",
-            )}
-          >
-            <div className="flex w-36 shrink-0 items-center gap-2 border-r border-border/60 bg-sidebar/35 px-2 py-2 backdrop-blur-sm">
-              <PanelBottom className="size-3.5 text-muted-foreground" />
-              <span className="truncate text-[11px] font-medium text-foreground/90">
-                Bottom banner
-              </span>
-            </div>
-            <div className="timeline-row-area relative min-h-7 flex-1 touch-none select-none">
-              <div className="absolute top-1 bottom-1 left-[1px] right-[1px] rounded-sm border border-border/50 bg-violet-500/10" />
+              >
+                <PanelBottom className="size-3.5 text-[#b3b3b3]" />
+                <span className="truncate text-[10px] font-semibold uppercase tracking-[0.12em] text-[#b3b3b3]">
+                  Bottom banner
+                </span>
+              </div>
               <div
-                className="pointer-events-none absolute top-0 bottom-0 z-20 w-[2px] bg-rose-500/90 shadow-[0_0_18px_rgba(244,63,94,0.75)]"
-                style={{
-                  left: `${totalSec > 0 ? (playheadSec / totalSec) * 100 : 0}%`,
-                }}
-              />
-            </div>
-          </button>
+                className="timeline-row-area relative min-h-7 flex-1 touch-none select-none"
+                style={{ backgroundColor: VIBE_STUDIO.canvasBg }}
+              >
+                <div
+                  className="absolute top-1 bottom-1 left-px right-px rounded-sm opacity-90"
+                  style={{ backgroundColor: VIBE_STUDIO.bottomBanner }}
+                />
+                <div
+                  className="pointer-events-none absolute top-0 bottom-0 z-20 w-px"
+                  style={{
+                    left: `${playheadPct}%`,
+                    backgroundColor: VIBE_STUDIO.playhead,
+                    boxShadow: `0 0 12px ${VIBE_STUDIO.playhead}`,
+                  }}
+                />
+              </div>
+            </button>
 
-          <button
-            type="button"
-            onClick={() => {
-              setSelectedClipId(null);
-              setStudioPanel("qr");
-            }}
-            className={cn(
-              "flex w-full border-b border-border/60 bg-muted/10 text-left",
-              "border-l-2",
-              "border-l-sky-500/90",
-              "hover:bg-sky-500/10",
-            )}
-          >
-            <div className="flex w-36 shrink-0 items-center gap-2 border-r border-border/60 bg-sidebar/35 px-2 py-2 backdrop-blur-sm">
-              <QrCode className="size-3.5 text-muted-foreground" />
-              <span className="truncate text-[11px] font-medium text-foreground/90">
-                QR code
-              </span>
-            </div>
-            <div className="timeline-row-area relative min-h-7 flex-1 touch-none select-none">
-              <div className="absolute top-1 bottom-1 left-[1px] right-[1px] rounded-sm border border-border/50 bg-sky-500/10" />
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedClipId(null);
+                setStudioPanel("qr");
+              }}
+              className="flex w-full border-b border-l-[3px] border-solid text-left transition-colors hover:brightness-110"
+              style={{
+                borderBottomColor: VIBE_STUDIO.borderSubtle,
+                borderLeftColor: VIBE_STUDIO.qr,
+                backgroundColor: VIBE_STUDIO.panelBg,
+              }}
+            >
               <div
-                className="pointer-events-none absolute top-0 bottom-0 z-20 w-[2px] bg-rose-500/90 shadow-[0_0_18px_rgba(244,63,94,0.75)]"
+                className="flex w-[148px] shrink-0 items-center gap-2 border-r px-2.5 py-2"
                 style={{
-                  left: `${totalSec > 0 ? (playheadSec / totalSec) * 100 : 0}%`,
+                  borderColor: VIBE_STUDIO.borderSubtle,
+                  backgroundColor: VIBE_STUDIO.panelBg,
                 }}
-              />
-            </div>
-          </button>
+              >
+                <QrCode className="size-3.5 text-[#b3b3b3]" />
+                <span className="truncate text-[10px] font-semibold uppercase tracking-[0.12em] text-[#b3b3b3]">
+                  QR code
+                </span>
+              </div>
+              <div
+                className="timeline-row-area relative min-h-7 flex-1 touch-none select-none"
+                style={{ backgroundColor: VIBE_STUDIO.canvasBg }}
+              >
+                <div
+                  className="absolute top-1 bottom-1 left-px right-px rounded-sm opacity-90"
+                  style={{ backgroundColor: VIBE_STUDIO.qr }}
+                />
+                <div
+                  className="pointer-events-none absolute top-0 bottom-0 z-20 w-px"
+                  style={{
+                    left: `${playheadPct}%`,
+                    backgroundColor: VIBE_STUDIO.playhead,
+                    boxShadow: `0 0 12px ${VIBE_STUDIO.playhead}`,
+                  }}
+                />
+              </div>
+            </button>
 
-          {timelineTracks.map((track) => {
-            const lane =
-              typeof track.metadata?.lane === "string"
-                ? track.metadata.lane
-                : track.type.toLowerCase();
-            const Icon = laneIcon(lane);
-            const accent = laneAccent[lane] ?? "border-l-primary/60";
+            {timelineTracks.map((track) => {
+              const lane =
+                typeof track.metadata?.lane === "string"
+                  ? track.metadata.lane
+                  : track.type.toLowerCase();
+              const Icon = laneIcon(lane);
+              const stripe = laneBorderStyle(lane);
 
-            const isAnimatedLane = lane === "voice" || lane === "music";
-            const RowComp = isAnimatedLane ? motion.div : "div";
-            return (
-              <RowComp
-                key={track.id}
-                className={cn(
-                  "flex border-b border-border/60 bg-muted/10",
-                  "border-l-2",
-                  accent,
-                  lane === "voice" &&
-                    voiceLaneFlash &&
-                    "shadow-[0_0_0_1px_rgba(251,191,36,0.55),0_0_20px_rgba(251,191,36,0.35)]",
-                  lane === "music" &&
-                    musicLaneFlash &&
-                    "shadow-[0_0_0_1px_rgba(16,185,129,0.5),0_0_18px_rgba(16,185,129,0.28)]",
-                )}
-                {...(isAnimatedLane
-                  ? {
-                      initial: false,
-                      animate:
-                        lane === "voice" && voiceLaneFlash
-                          ? {
-                              scale: [1, 1.01, 1],
-                              backgroundColor: [
-                                "rgba(245,158,11,0.04)",
-                                "rgba(245,158,11,0.14)",
-                                "rgba(245,158,11,0.04)",
-                              ],
-                            }
-                          : lane === "music" && musicLaneFlash
+              const isAnimatedLane = lane === "voice" || lane === "music";
+              const RowComp = isAnimatedLane ? motion.div : "div";
+              const displayLabel = vibeLaneLabel(lane, track.name);
+
+              return (
+                <RowComp
+                  key={track.id}
+                  className={cn(
+                    "flex border-b border-l-[3px] border-solid",
+                    lane === "voice" &&
+                      voiceLaneFlash &&
+                      "shadow-[0_0_0_1px_rgba(93,27,179,0.55),0_0_20px_rgba(93,27,179,0.35)]",
+                    lane === "music" &&
+                      musicLaneFlash &&
+                      "shadow-[0_0_0_1px_rgba(0,77,77,0.55),0_0_18px_rgba(0,77,77,0.35)]",
+                  )}
+                  style={{
+                    borderBottomColor: VIBE_STUDIO.borderSubtle,
+                    ...stripe,
+                    backgroundColor: VIBE_STUDIO.panelBg,
+                  }}
+                  {...(isAnimatedLane
+                    ? {
+                        initial: false,
+                        animate:
+                          lane === "voice" && voiceLaneFlash
                             ? {
-                                scale: [1, 1.008, 1],
+                                scale: [1, 1.01, 1],
                                 backgroundColor: [
-                                  "rgba(16,185,129,0.04)",
-                                  "rgba(16,185,129,0.12)",
-                                  "rgba(16,185,129,0.04)",
+                                  "rgba(93,27,179,0.05)",
+                                  "rgba(93,27,179,0.12)",
+                                  "rgba(93,27,179,0.05)",
                                 ],
                               }
-                            : { scale: 1 },
-                      transition: { duration: 0.45, ease: "easeOut" },
-                    }
-                  : {})}
-              >
-                <div className="flex w-36 shrink-0 items-center gap-2 border-r border-border/60 bg-sidebar/35 px-2 py-2 backdrop-blur-sm">
-                  <Icon className="size-3.5 text-muted-foreground" />
-                  <span className="truncate text-[11px] font-medium text-foreground/90">
-                    {track.name ?? track.type}
-                  </span>
-                </div>
-                <div className="timeline-row-area relative min-h-9 flex-1 touch-none select-none">
-                  {track.clipIds.map((cid) => (
-                    <TimelineClipBar
-                      key={cid}
-                      clipId={cid}
-                      totalSec={totalSec}
-                      lane={lane}
-                      projectId={projectId}
-                    />
-                  ))}
+                            : lane === "music" && musicLaneFlash
+                              ? {
+                                  scale: [1, 1.008, 1],
+                                  backgroundColor: [
+                                    "rgba(0,77,77,0.06)",
+                                    "rgba(0,77,77,0.14)",
+                                    "rgba(0,77,77,0.06)",
+                                  ],
+                                }
+                              : { scale: 1 },
+                        transition: { duration: 0.45, ease: "easeOut" },
+                      }
+                    : {})}
+                >
                   <div
-                    className="pointer-events-none absolute top-0 bottom-0 z-20 w-[2px] bg-rose-500/90 shadow-[0_0_18px_rgba(244,63,94,0.75)]"
+                    className="flex w-[148px] shrink-0 items-center gap-2 border-r px-2.5 py-2"
                     style={{
-                      left: `${totalSec > 0 ? (playheadSec / totalSec) * 100 : 0}%`,
+                      borderColor: VIBE_STUDIO.borderSubtle,
+                      backgroundColor: VIBE_STUDIO.panelBg,
                     }}
-                  />
-                </div>
-              </RowComp>
-            );
-          })}
-
-        </div>
-        <ScrollBar orientation="vertical" />
-        <ScrollBar orientation="horizontal" />
-      </ScrollArea>
+                  >
+                    <Icon className="size-3.5 text-[#b3b3b3]" />
+                    <span className="truncate text-[10px] font-semibold uppercase tracking-[0.12em] text-[#b3b3b3]">
+                      {displayLabel}
+                    </span>
+                  </div>
+                  <div
+                    className="timeline-row-area relative min-h-9 flex-1 touch-none select-none"
+                    style={{ backgroundColor: VIBE_STUDIO.canvasBg }}
+                  >
+                    {lane === "music" ? (
+                      <div
+                        className="pointer-events-none absolute top-1 bottom-1 left-px right-px rounded-sm opacity-[0.35]"
+                        style={{ backgroundColor: VIBE_STUDIO.music }}
+                      />
+                    ) : null}
+                    {lane === "voice" ? (
+                      <div
+                        className="pointer-events-none absolute top-1 bottom-1 left-px right-px rounded-sm opacity-[0.3]"
+                        style={{ backgroundColor: VIBE_STUDIO.voice }}
+                      />
+                    ) : null}
+                    {track.clipIds.map((cid) => (
+                      <TimelineClipBar
+                        key={cid}
+                        clipId={cid}
+                        totalSec={totalSec}
+                        lane={lane}
+                        projectId={projectId}
+                      />
+                    ))}
+                    <div
+                      className="pointer-events-none absolute top-0 bottom-0 z-20 w-px"
+                      style={{
+                        left: `${playheadPct}%`,
+                        backgroundColor: VIBE_STUDIO.playhead,
+                        boxShadow: `0 0 12px ${VIBE_STUDIO.playhead}`,
+                      }}
+                    />
+                  </div>
+                </RowComp>
+              );
+            })}
+          </div>
+          <ScrollBar orientation="vertical" />
+          <ScrollBar orientation="horizontal" />
+        </ScrollArea>
+      </div>
 
       <div className="space-y-1 px-0.5 pt-0">
-        <div className="flex justify-between text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+        <div className="flex justify-between text-[10px] font-medium uppercase tracking-wider text-white/40">
           <span>Playhead</span>
-          <span>scrub</span>
+          <span>Scrub</span>
         </div>
         <Slider
           min={0}
@@ -640,47 +723,6 @@ export function MultiTrackTimeline({ projectId }: MultiTrackTimelineProps) {
           }}
         />
       </div>
-      <AnimatePresence>
-        {voBusy ? (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-4 rounded-xl bg-background/20 backdrop-blur-md"
-          >
-            <div className="flex items-end gap-1.5">
-              {[0, 1, 2, 3, 4, 5, 6].map((i) => (
-                <motion.span
-                  key={i}
-                  className="w-1.5 rounded-full"
-                  style={{
-                    backgroundColor: brandPrimary,
-                    boxShadow: `0 0 10px ${brandPrimary}`,
-                  }}
-                  animate={{
-                    height: [10, 26 + (i % 3) * 6, 14],
-                    opacity: [0.45, 1, 0.55],
-                  }}
-                  transition={{
-                    duration: 0.9 + i * 0.08,
-                    repeat: Infinity,
-                    ease: "easeInOut",
-                  }}
-                />
-              ))}
-            </div>
-            <motion.p
-              key={statusIndex}
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -6 }}
-              className="text-center text-xs font-medium text-foreground/90"
-            >
-              {statuses[statusIndex]}
-            </motion.p>
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
     </div>
   );
 }

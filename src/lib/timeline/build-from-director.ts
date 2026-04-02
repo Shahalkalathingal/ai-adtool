@@ -11,6 +11,8 @@ import {
   type ProjectTimelineMeta,
   type TrackTimelineState,
 } from "@/lib/types/timeline";
+import { DEFAULT_KOKORO_TTS_VOICE } from "@/lib/voiceover/kokoro-voices";
+import { VIBE_STUDIO } from "@/lib/ui/vibe-studio-tokens";
 
 function uid(prefix: string): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 11)}`;
@@ -283,6 +285,7 @@ export function buildTimelineFromDirectorPlan(
       sourceUrl: options?.sourceUrl,
       previewSubtitle: `${plan.scenes.length} scenes · ${plan.musicMood}`,
       masterVoiceoverScript: masterVoiceover,
+      kokoroTtsVoice: DEFAULT_KOKORO_TTS_VOICE,
       masterScriptSource:
         options?.masterVoiceoverScript?.trim() ? "neural-architect" : "director-scenes",
       ...(options?.adNiche ? { adNiche: options.adNiche } : {}),
@@ -312,6 +315,7 @@ export function buildTimelineFromDirectorPlan(
       logoFromScrape: Boolean(logoUrl),
       endScreenTagline: plan.brand.tagline ?? "Call us today",
       endScreenPhone: phone,
+      bannerPhoneColor: VIBE_STUDIO.sceneBannerPhone,
     },
   };
 

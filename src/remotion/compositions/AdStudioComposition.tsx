@@ -5,8 +5,6 @@ import { QRCodeSVG } from "qrcode.react";
 import {
   AbsoluteFill,
   interpolate,
-  Sequence,
-  staticFile,
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
@@ -25,6 +23,7 @@ import {
   voiceVolumePctFromAudioProps,
 } from "@/lib/audio/volume-pct";
 import { HEADLINE_FONT } from "@/remotion/components/HeadlineLayer";
+import { VIBE_STUDIO } from "@/lib/ui/vibe-studio-tokens";
 
 const LUX_DETAIL_FONT =
   'var(--font-geist-sans, "Geist Sans"), Inter, ui-sans-serif, system-ui, sans-serif';
@@ -54,6 +53,7 @@ export type AdStudioCompositionProps = {
     logoUrl: string;
     endScreenTagline: string;
     endScreenPhone: string;
+    endScreenPhoneColor?: string;
     tagline: string;
     endScreenCtaText?: string;
     endScreenCtaBg1?: string;
@@ -646,6 +646,7 @@ type EndCardProps = {
   relFrame: number;
   fps: number;
   brandPrimary: string;
+  endScreenPhoneColor?: string;
   endCtaText?: string;
   endCtaBg1?: string;
   endCtaBg2?: string;
@@ -664,15 +665,13 @@ function EndCard({
   relFrame,
   fps,
   brandPrimary,
+  endScreenPhoneColor,
   endCtaText,
   endCtaBg1,
   endCtaBg2,
   endCtaTextColor,
 }: EndCardProps) {
   const host = website.replace(/^https?:\/\//, "").replace(/\/$/, "");
-  const headline =
-    tagline.trim() ||
-    (brandName.trim() ? `${brandName.trim()}.` : "Shop the drop.");
   const withAlpha = (hex: string, alpha: string) => {
     const h = hex.trim();
     if (/^#[0-9a-f]{6}$/i.test(h) && /^[0-9a-f]{2}$/i.test(alpha.trim())) {
@@ -687,7 +686,7 @@ function EndCard({
       (btnBg1.startsWith("#") && btnBg1.length === 7
         ? `${btnBg1}dd`
         : btnBg1)).trim();
-  const btnFg = (endCtaTextColor?.trim() || "#0a0a0a").trim();
+  const btnFg = (endCtaTextColor?.trim() || "#ffffff").trim();
   const btnBg1Shadow55 = withAlpha(btnBg1, "55");
 
   const ctaLabel = endCtaText?.trim()
@@ -695,46 +694,53 @@ function EndCard({
     : endOutroCtaLabel(brandName || "brand");
 
   const ctaStart = endOutroCtaStartFrames(fps);
-  const cardInF = Math.max(8, Math.round(0.42 * fps));
-  const logoDelay = Math.round(0.1 * fps);
-  const logoInF = Math.max(6, Math.round(0.3 * fps));
-  const headlineDelay = Math.round(0.16 * fps);
-  const headlineTw = Math.max(10, Math.round(0.88 * fps));
-  const logoStart = logoDelay;
-  const headlineStart = logoDelay + logoInF + headlineDelay;
+  const cardInF = Math.max(8, Math.round(0.38 * fps));
+  const headIn = Math.round(0.12 * fps);
+  const phoneHeroColor =
+    (endScreenPhoneColor && endScreenPhoneColor.trim()) ||
+    VIBE_STUDIO.endCardPhone;
 
-  const cardY = interpolate(
+  const introY = interpolate(
     relFrame,
     [0, cardInF],
-    [110, 0],
+    [18, 0],
     { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
   );
   const cardOpacity = interpolate(
     relFrame,
-    [0, Math.min(cardInF, Math.round(0.18 * fps))],
+    [0, Math.min(cardInF, Math.round(0.16 * fps))],
     [0, 1],
     { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
   );
 
-  const logoOpacity = interpolate(
+  const headOpacity = interpolate(
     relFrame,
-    [logoStart, logoStart + logoInF],
+    [headIn, headIn + Math.round(0.22 * fps)],
     [0, 1],
     { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
   );
-  const glowPulse =
-    0.55 +
-    0.45 *
-      (0.5 +
-        0.5 * Math.sin((relFrame / Math.max(fps, 1)) * Math.PI * 1.85));
 
-  const twChars = Math.max(
-    0,
-    Math.ceil(headline.length * Math.min(1, (relFrame - headlineStart) / headlineTw)),
+  const phoneOpacity = interpolate(
+    relFrame,
+    [headIn + Math.round(0.08 * fps), headIn + Math.round(0.32 * fps)],
+    [0, 1],
+    { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
   );
-  const headlineShown = headline.slice(0, twChars);
+  const phoneY = interpolate(
+    relFrame,
+    [headIn + Math.round(0.08 * fps), headIn + Math.round(0.32 * fps)],
+    [22, 0],
+    { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
+  );
 
-  const rowInF = Math.round(0.22 * fps);
+  const detailOpacity = interpolate(
+    relFrame,
+    [headIn + Math.round(0.2 * fps), headIn + Math.round(0.42 * fps)],
+    [0, 1],
+    { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
+  );
+
+  const rowInF = Math.round(0.2 * fps);
   const rowOpacity = interpolate(
     relFrame,
     [ctaStart, ctaStart + rowInF],
@@ -744,172 +750,260 @@ function EndCard({
   const rowY = interpolate(
     relFrame,
     [ctaStart, ctaStart + rowInF],
-    [18, 0],
+    [14, 0],
     { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
   );
   const btnPulse =
     1 +
-    0.032 *
-      Math.sin((Math.max(0, relFrame - ctaStart) / Math.max(fps, 1)) * Math.PI * 2.4);
+    0.028 *
+      Math.sin((Math.max(0, relFrame - ctaStart) / Math.max(fps, 1)) * Math.PI * 2.2);
 
-  const footerBits = [phone.trim(), brandName.trim(), address.trim(), host]
-    .filter(Boolean)
-    .join(" · ");
+  const phoneFontPx = Math.min(
+    92,
+    48 + Math.floor(520 / Math.max(phone.trim().length, 10)),
+  );
 
   return (
     <AbsoluteFill
       style={{
-        background:
-          "radial-gradient(120% 90% at 50% 120%, rgba(255,255,255,0.06) 0%, #050506 45%, #020203 100%)",
-        fontFamily: HEADLINE_FONT,
+        backgroundColor: "#ffffff",
+        fontFamily: LUX_DETAIL_FONT,
+        opacity: cardOpacity,
+        transform: `translateY(${introY}px)`,
       }}
     >
-      <AbsoluteFill
+      <div
         style={{
-          justifyContent: "center",
-          alignItems: "center",
-          padding: "5% 6%",
+          position: "absolute",
+          inset: 0,
+          padding: "3.2vh 4.8% 4vh",
           boxSizing: "border-box",
+          display: "flex",
+          flexDirection: "column",
         }}
       >
+        {qrValue.trim() ? (
+          <div
+            style={{
+              position: "absolute",
+              top: "3.2vh",
+              right: "4.8%",
+              padding: 8,
+              borderRadius: 8,
+              background: "#ffffff",
+              border: "1px solid #e5e7eb",
+              boxShadow: "0 4px 18px rgba(0,0,0,0.06)",
+            }}
+          >
+            <QRCodeSVG
+              value={qrValue.trim()}
+              size={Math.round(88 * 1.15)}
+              level="M"
+              marginSize={0}
+            />
+          </div>
+        ) : null}
+
         <div
           style={{
-            width: "min(94%, 900px)",
-            minHeight: "62vh",
-            transform: `translateY(${cardY}px)`,
-            opacity: cardOpacity,
-            borderRadius: 32,
-            padding: "48px 40px 40px",
-            boxSizing: "border-box",
-            background: "rgba(255,255,255,0.05)",
-            backdropFilter: "blur(28px)",
-            WebkitBackdropFilter: "blur(28px)",
-            border: "1px solid rgba(255,255,255,0.1)",
-            boxShadow:
-              "0 28px 90px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.08)",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            textAlign: "center",
+            opacity: headOpacity,
+            flexShrink: 0,
+            paddingTop: "0.5vh",
           }}
         >
           <div
             style={{
+              width: 72,
+              height: 72,
+              borderRadius: 10,
+              overflow: "hidden",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "#f4f4f5",
+              border: "1px solid #e5e7eb",
+            }}
+          >
+            <div style={{ width: 58, height: 58 }}>
+              <SafeBrandLogo
+                src={logoUrl}
+                origin={origin}
+                letter={brandName}
+              />
+            </div>
+          </div>
+          <div
+            style={{
+              marginTop: 12,
+              fontSize: 13,
+              fontWeight: 800,
+              letterSpacing: "0.18em",
+              textTransform: "uppercase",
+              color: "#111827",
+              fontFamily: HEADLINE_FONT,
+            }}
+          >
+            {(brandName.trim() || "Your brand").toUpperCase()}
+          </div>
+        </div>
+
+        <div
+          style={{
+            flex: 1,
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "center",
+            alignItems: "center",
+            minHeight: 0,
+            textAlign: "center",
+            padding: "1vh 2% 2vh",
+            gap: "1.4vh",
+          }}
+        >
+          {phone.trim() ? (
+            <div
+              style={{
+                fontSize: phoneFontPx,
+                fontWeight: 900,
+                letterSpacing: "-0.03em",
+                lineHeight: 1.02,
+                color: phoneHeroColor,
+                fontFamily: HEADLINE_FONT,
+                opacity: phoneOpacity,
+                transform: `translateY(${phoneY}px)`,
+              }}
+            >
+              {phone.trim()}
+            </div>
+          ) : null}
+
+          <div
+            style={{
+              fontSize: 26,
+              fontWeight: 800,
+              color: "#111827",
+              fontFamily: HEADLINE_FONT,
+              letterSpacing: "-0.02em",
+              opacity: phoneOpacity,
+            }}
+          >
+            {brandName.trim() || "Your brand"}
+          </div>
+
+          {tagline.trim() ? (
+            <div
+              style={{
+                fontSize: 16,
+                fontWeight: 600,
+                color: "#4b5563",
+                lineHeight: 1.4,
+                maxWidth: "90%",
+                opacity: detailOpacity,
+              }}
+            >
+              {tagline.trim()}
+            </div>
+          ) : null}
+
+          <div
+            style={{
+              marginTop: 8,
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
-              textAlign: "center",
-              gap: 32,
+              gap: 10,
+              fontSize: 15,
+              lineHeight: 1.45,
+              color: "#6b7280",
+              fontWeight: 500,
+              opacity: detailOpacity,
             }}
           >
-            <div
-              style={{
-                width: 168,
-                height: 168,
-                borderRadius: 28,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                opacity: logoOpacity,
-                background: "rgba(0,0,0,0.25)",
-                border: "1px solid rgba(255,255,255,0.08)",
-                boxShadow: `0 0 ${32 + glowPulse * 48}px ${brandPrimary}66, 0 0 ${14 + glowPulse * 18}px ${brandPrimary}44`,
-              }}
-            >
-              <div style={{ width: 138, height: 138 }}>
-                <SafeBrandLogo src={logoUrl} origin={origin} letter={brandName} />
-              </div>
-            </div>
-
-            <div
-              style={{
-                fontSize: Math.min(
-                  76,
-                  52 + Math.floor(720 / Math.max(headline.length, 8)),
-                ),
-                fontWeight: 900,
-                lineHeight: 1.02,
-                letterSpacing: "-0.045em",
-                color: "#fafafa",
-                textTransform: "uppercase",
-                textShadow: "0 6px 40px rgba(0,0,0,0.65)",
-                padding: "0 4px",
-                minHeight: "1.1em",
-              }}
-            >
-              {headlineShown}
-              {relFrame > headlineStart && twChars < headline.length ? (
-                <span style={{ opacity: 0.5 }}>|</span>
-              ) : null}
-            </div>
-
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 18,
-                width: "100%",
-                marginTop: 4,
-                opacity: rowOpacity,
-                transform: `translateY(${rowY}px)`,
-              }}
-            >
-              <button
-                type="button"
-                style={{
-                    transform: `scale(${btnPulse})`,
-                    padding: "22px 40px",
-                    borderRadius: 999,
-                    border: "none",
-                    fontFamily: HEADLINE_FONT,
-                    fontSize: 28,
-                    fontWeight: 900,
-                    letterSpacing: "0.06em",
-                    textTransform: "uppercase",
-                    color: btnFg,
-                    background: `linear-gradient(180deg, ${btnBg1} 0%, ${btnBg2} 100%)`,
-                    boxShadow: `0 0 0 1px rgba(255,255,255,0.2), 0 16px 48px ${btnBg1Shadow55}, 0 8px 24px rgba(0,0,0,0.45)`,
-                    whiteSpace: "nowrap",
-                  }}
-              >
-                {ctaLabel}
-              </button>
-              {qrValue.trim() ? (
-                <div
-                  style={{
-                    padding: 12,
-                    borderRadius: 16,
-                    background: "rgba(255,255,255,0.96)",
-                    border: `6px solid ${brandPrimary}`,
-                    boxShadow: `0 0 0 2px rgba(255,255,255,0.4) inset, 0 16px 40px rgba(0,0,0,0.4)`,
-                    flexShrink: 0,
-                  }}
-                >
-                  <QRCodeSVG
-                    value={qrValue.trim()}
-                    size={118}
-                    level="M"
-                    marginSize={0}
-                  />
-                </div>
-              ) : null}
-            </div>
-
-            {footerBits ? (
+            {address.trim() ? (
               <div
                 style={{
-                  marginTop: 14,
-                  fontSize: 13,
-                  lineHeight: 1.45,
-                  color: "rgba(250,250,250,0.38)",
-                  fontWeight: 600,
-                  maxWidth: "100%",
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: 10,
+                  maxWidth: "min(92%, 720px)",
+                  textAlign: "center",
+                  justifyContent: "center",
                 }}
               >
-                {footerBits}
+                <span
+                  style={{
+                    color: "#9ca3af",
+                    flexShrink: 0,
+                    display: "flex",
+                    marginTop: 2,
+                  }}
+                  aria-hidden
+                >
+                  <MapPin size={18} strokeWidth={1.75} />
+                </span>
+                <span>{address.trim()}</span>
+              </div>
+            ) : null}
+            {host ? (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  color: "#374151",
+                  fontWeight: 600,
+                }}
+              >
+                <span
+                  style={{ color: "#9ca3af", flexShrink: 0, display: "flex" }}
+                  aria-hidden
+                >
+                  <Globe size={18} strokeWidth={1.75} />
+                </span>
+                <span>{host}</span>
               </div>
             ) : null}
           </div>
         </div>
-      </AbsoluteFill>
+
+        {endCtaText?.trim() ? (
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "center",
+              flexShrink: 0,
+              paddingBottom: "1vh",
+              opacity: rowOpacity,
+              transform: `translateY(${rowY}px)`,
+            }}
+          >
+            <button
+              type="button"
+              style={{
+                transform: `scale(${btnPulse})`,
+                padding: "14px 32px",
+                borderRadius: 8,
+                border: "none",
+                fontFamily: HEADLINE_FONT,
+                fontSize: 16,
+                fontWeight: 800,
+                letterSpacing: "0.05em",
+                textTransform: "uppercase",
+                color: btnFg,
+                background: `linear-gradient(180deg, ${btnBg1} 0%, ${btnBg2} 100%)`,
+                boxShadow: `0 0 0 1px rgba(0,0,0,0.06), 0 14px 36px ${btnBg1Shadow55}`,
+                cursor: "default",
+              }}
+            >
+              {ctaLabel}
+            </button>
+          </div>
+        ) : null}
+      </div>
     </AbsoluteFill>
   );
 }
@@ -1224,6 +1318,7 @@ export function AdStudioComposition({
   const endCtaBg1 = brandKit.endScreenCtaBg1 || "";
   const endCtaBg2 = brandKit.endScreenCtaBg2 || "";
   const endCtaTextColor = brandKit.endScreenCtaTextColor || "#0a0a0a";
+  const endScreenPhoneColor = brandKit.endScreenPhoneColor || "";
   const brandSlogan =
     (brandKit.tagline && brandKit.tagline.trim()) ||
     metaString(metadata, "tagline") ||
@@ -1236,7 +1331,8 @@ export function AdStudioComposition({
   );
   const brandNameColor = brandKit.bannerBrandNameColor || "#fafafa";
   const brandDetailColor = brandKit.bannerDetailColor || "rgba(250,250,250,0.78)";
-  const brandPhoneColor = brandKit.bannerPhoneColor || brandSecondary;
+  const brandPhoneColor =
+    brandKit.bannerPhoneColor || VIBE_STUDIO.sceneBannerPhone;
   const brandPhoneScale = Math.max(
     0.8,
     Math.min(1.4, brandKit.bannerPhoneScale ?? 1),
@@ -1308,7 +1404,6 @@ export function AdStudioComposition({
     endStartSec !== null ? Math.round(endStartSec * fps) : durationInFrames + 1;
   const onEndCard = frame >= endStartF && endStartSec !== null;
   const endRelFrame = onEndCard ? frame - endStartF : 0;
-  const ctaChimeAt = endStartF + endOutroCtaStartFrames(fps);
 
   const nonEndClips = listNonEndVisualClips(timeline.tracks, timeline.clipsById);
   const crossSec = 0.48;
@@ -1342,14 +1437,6 @@ export function AdStudioComposition({
       }}
     >
       {audioLayer}
-      {onEndCard ? (
-        <Sequence from={ctaChimeAt} layout="none">
-          <Audio
-            src={staticFile("media/sfx/cta-chime.mp3")}
-            volume={0.38}
-          />
-        </Sequence>
-      ) : null}
 
       {!onEndCard ? (
         <AbsoluteFill>
@@ -1390,6 +1477,7 @@ export function AdStudioComposition({
           relFrame={endRelFrame}
           fps={fps}
           brandPrimary={brandPrimary}
+          endScreenPhoneColor={endScreenPhoneColor}
           endCtaText={endCtaText}
           endCtaBg1={endCtaBg1}
           endCtaBg2={endCtaBg2}

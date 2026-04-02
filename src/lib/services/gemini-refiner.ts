@@ -4,6 +4,7 @@ import {
   type RefinementPatch,
 } from "@/lib/types/refinement";
 import { getGeminiModelId } from "@/lib/services/gemini-model";
+import { logGeminiRequest } from "@/lib/services/gemini-request-log";
 
 function buildPrompt(timelineJson: string, userPrompt: string): string {
   return `You are an expert video editor AI inside a professional ad timeline tool.
@@ -65,6 +66,7 @@ export async function runGeminiRefiner(input: {
     },
   });
 
+  logGeminiRequest("timeline-refiner", { model: getGeminiModelId() });
   const result = await model.generateContent(
     buildPrompt(input.timelineJson, input.prompt),
   );

@@ -1,3 +1,5 @@
+import { isProblematicImageUrlForAds } from "@/lib/images/image-url-heuristics";
+
 export type ContactHints = {
   phone?: string;
   address?: string;
@@ -63,12 +65,12 @@ export function extractImageUrlsFromMarkdown(markdown: string): string[] {
   const re1 = new RegExp(MARKDOWN_IMG_RE);
   while ((m = re1.exec(md)) !== null) {
     const u = normalizeUrl(m[1] ?? "");
-    if (isLikelyProductImage(u)) found.add(u);
+    if (isLikelyProductImage(u) && !isProblematicImageUrlForAds(u)) found.add(u);
   }
   const re2 = new RegExp(BARE_IMG_RE);
   while ((m = re2.exec(md)) !== null) {
     const u = normalizeUrl(m[1] ?? "");
-    if (isLikelyProductImage(u)) found.add(u);
+    if (isLikelyProductImage(u) && !isProblematicImageUrlForAds(u)) found.add(u);
   }
   return [...found].slice(0, 24);
 }

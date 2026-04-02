@@ -1,8 +1,13 @@
 "use server";
 
-import { synthesizeMicrosoftEdgeTts } from "@/lib/services/microsoft-edge-tts";
+import { synthesizeKokoroTts } from "@/lib/services/kokoro-tts";
 import { savePublicMedia } from "@/lib/storage/public-media";
-import { normalizeMasterScriptWhitespace } from "@/lib/voiceover/master-script-policy";
+import {
+  SCENE_VOICEOVER_MAX_WORDS,
+  capWordCountWithCleanEnding,
+  normalizeMasterScriptWhitespace,
+} from "@/lib/voiceover/master-script-policy";
+import { normalizeKokoroVoiceId } from "@/lib/voiceover/kokoro-voices";
 
 export type GenerateVoiceoverResult =
   | { ok: true; publicUrl: string; durationSecEstimate: number }
@@ -31,13 +36,12 @@ function compactScriptForFiveSec(script: string): string {
     .replace(/\s+([,.;!?])/g, "$1")
     .trim();
   if (!cleaned) return "";
-  // Keep exactly one sentence for immersive VO.
   const firstSentence = cleaned.split(/(?<=[.!?])\s+/)[0] || cleaned;
-  const words = firstSentence.split(" ").filter(Boolean);
-  const maxWords = 16;
-  const trimmed =
-    words.length <= maxWords ? firstSentence : `${words.slice(0, maxWords).join(" ")}.`;
-  return /[.!?]$/.test(trimmed) ? trimmed : `${trimmed}.`;
+  return capWordCountWithCleanEnding(
+    firstSentence,
+    SCENE_VOICEOVER_MAX_WORDS,
+    8,
+  );
 }
 
 function normalizeMasterScript(script: string): string {
@@ -48,11 +52,11 @@ function makeUniqueVoiceFilename(projectId: string): string {
   const safe = projectId.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 24) || "project";
   const stamp = Date.now().toString(36);
   const rand = Math.random().toString(36).slice(2, 8);
-  return `voice-${safe}-${stamp}-${rand}.mp3`;
+  return `voice-${safe}-${stamp}-${rand}.wav`;
 }
 
 /**
- * Concatenate voiceover scripts from the client timeline JSON and synthesize one MP3 via Edge TTS.
+ * Concatenate voiceover scripts from the client timeline JSON and synthesize one WAV via Kokoro (local TTS).
  */
 export async function generateVoiceoverFromTimelineJson(
   projectId: string,
@@ -64,6 +68,7 @@ export async function generateVoiceoverFromTimelineJson(
   let clipsById: Record<string, ClipJson> = {};
   let websiteUrl = "";
   let masterScript = "";
+  let kokoroVoiceRaw: unknown;
   try {
     const parsed = JSON.parse(timelineJson) as {
       clipsById?: Record<string, ClipJson>;
@@ -80,9 +85,12 @@ export async function generateVoiceoverFromTimelineJson(
       typeof rawMaster === "string" && rawMaster.trim()
         ? normalizeMasterScript(rawMaster)
         : "";
+    kokoroVoiceRaw = parsed.project?.metadata?.kokoroTtsVoice;
   } catch {
     return { ok: false, error: "Invalid timeline JSON." };
   }
+
+  const kokoroVoiceId = normalizeKokoroVoiceId(kokoroVoiceRaw);
 
   const vo = Object.entries(clipsById)
     .filter(([, c]) => c.mediaType === "VOICEOVER")
@@ -122,7 +130,7 @@ export async function generateVoiceoverFromTimelineJson(
   }
   }
 
-  // Single MP3 for whole timeline; keep concatenation seamless (no paragraph pauses).
+  // Single audio file for whole timeline; keep concatenation seamless (no paragraph pauses).
   const text = voScripts.join(" ");
   if (text.length < 2) {
     return {
@@ -132,16 +140,14 @@ export async function generateVoiceoverFromTimelineJson(
   }
 
   try {
-    const buffer = await synthesizeMicrosoftEdgeTts(text, {
-      voice: "en-US-GuyNeural",
-    });
+    const buffer = await synthesizeKokoroTts(text, { voice: kokoroVoiceId });
 
     const filename = makeUniqueVoiceFilename(projectId);
     const saved = await savePublicMedia({
       projectId,
       filename,
       buffer,
-      contentType: "audio/mpeg",
+      contentType: "audio/wav",
     });
     if (!saved.ok) {
       return { ok: false, error: saved.error };

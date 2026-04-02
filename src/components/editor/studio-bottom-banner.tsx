@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useTimelineStore } from "@/lib/stores/timeline-store";
+import { VIBE_STUDIO } from "@/lib/ui/vibe-studio-tokens";
 
 type StudioBottomBannerProps = {
   projectId: string;
@@ -58,7 +59,7 @@ export function StudioBottomBanner({ projectId }: StudioBottomBannerProps) {
   const bannerPhoneColor =
     typeof bc.bannerPhoneColor === "string" && bc.bannerPhoneColor
       ? (bc.bannerPhoneColor as string)
-      : bc.secondaryColor;
+      : VIBE_STUDIO.sceneBannerPhone;
   const bannerPhoneScale =
     typeof bc.bannerPhoneScale === "number" &&
     Number.isFinite(bc.bannerPhoneScale as number)
@@ -100,7 +101,7 @@ export function StudioBottomBanner({ projectId }: StudioBottomBannerProps) {
     setBrandKit({
       bannerBrandNameColor: "#fafafa",
       bannerDetailColor: "#fafafa",
-      bannerPhoneColor: bc.secondaryColor,
+      bannerPhoneColor: VIBE_STUDIO.sceneBannerPhone,
       bannerPhoneScale: 1,
       headerBrandNameColor: "#fafafa",
       headerSloganColor: "#fafafa",

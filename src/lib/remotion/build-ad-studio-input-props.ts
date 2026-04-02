@@ -7,6 +7,7 @@ import type {
   ProjectTimelineMeta,
   TrackTimelineState,
 } from "@/lib/types/timeline";
+import { VIBE_STUDIO } from "@/lib/ui/vibe-studio-tokens";
 
 export function toRemotionTimeline(
   tracks: TrackTimelineState[],
@@ -88,6 +89,10 @@ export function buildAdStudioInputProps(
         typeof bc.endScreenTagline === "string" ? bc.endScreenTagline : "",
       endScreenPhone:
         typeof bc.endScreenPhone === "string" ? bc.endScreenPhone : "",
+      endScreenPhoneColor:
+        typeof bc.endScreenPhoneColor === "string"
+          ? bc.endScreenPhoneColor
+          : "",
       endScreenCtaText:
         typeof bc.endScreenCtaText === "string" ? bc.endScreenCtaText : "",
       endScreenCtaBg1:
@@ -108,9 +113,9 @@ export function buildAdStudioInputProps(
           ? bc.bannerDetailColor
           : "#fafafa",
       bannerPhoneColor:
-        typeof bc.bannerPhoneColor === "string"
+        typeof bc.bannerPhoneColor === "string" && bc.bannerPhoneColor.trim()
           ? bc.bannerPhoneColor
-          : bc.secondaryColor,
+          : VIBE_STUDIO.sceneBannerPhone,
       bannerPhoneScale:
         typeof bc.bannerPhoneScale === "number" ? bc.bannerPhoneScale : 1,
       headerBrandNameColor:
@@ -130,7 +135,7 @@ export function buildAdStudioInputProps(
           ? bc.qrOutlineColor
           : bc.primaryColor,
       qrOutlineWidth:
-        typeof bc.qrOutlineWidth === "number" ? bc.qrOutlineWidth : 5,
+        typeof bc.qrOutlineWidth === "number" ? bc.qrOutlineWidth : 3,
     },
     voiceoverSrc,
     voiceoverRate,

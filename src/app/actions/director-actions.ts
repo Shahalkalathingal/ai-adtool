@@ -58,6 +58,8 @@ export async function generateDirectorPlanFromUrl(
       scraped.pageIntel.productImageCandidates,
       scraped.pageIntel.companyName,
       scraped.title,
+      nicheId,
+      trimmed,
     );
     const pageIntel = {
       ...scraped.pageIntel,
@@ -69,7 +71,11 @@ export async function generateDirectorPlanFromUrl(
       title: scraped.title,
       pageIntel,
     });
-    const plan: DirectorPlan = await finalizeDirectorPlanImages(planRaw);
+    const plan: DirectorPlan = await finalizeDirectorPlanImages(
+      planRaw,
+      nicheId,
+      trimmed,
+    );
     const joinedSeed = joinPlanSceneVoiceovers(plan);
     let masterVoiceoverScript: string | undefined;
     try {

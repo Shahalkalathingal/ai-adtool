@@ -2,34 +2,27 @@
 
 import type { PlayerRef } from "@remotion/player";
 import { motion } from "framer-motion";
-import { Clapperboard, Maximize2, Minimize2, Pause, Play, TriangleAlert } from "lucide-react";
+import { Maximize2, Minimize2, Play, TriangleAlert, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { ExportStudioModal } from "@/components/editor/export-studio-modal";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EditorRemotionPlayer } from "@/components/editor/editor-remotion-player";
 import { InspectorPanel } from "@/components/editor/inspector-panel";
 import { MultiTrackTimeline } from "@/components/editor/multi-track-timeline";
 import { StudioShell } from "@/components/editor/studio-shell";
-import { framesToSeconds } from "@/lib/types/timeline";
+import { VibeStudioMark } from "@/components/editor/vibe-studio-mark";
 import {
   STUDIO_ASSEMBLY_MS,
   useStudioEntranceStore,
 } from "@/lib/stores/studio-entrance-store";
+import { useAutoVoiceoverOnTimeline } from "@/hooks/use-auto-voiceover-on-timeline";
 import { useTimelineStore } from "@/lib/stores/timeline-store";
-import { cn } from "@/lib/utils";
+import { VIBE_STUDIO } from "@/lib/ui/vibe-studio-tokens";
 
 type EditorWorkspaceProps = {
   projectId: string;
 };
-
-function formatTimecode(seconds: number): string {
-  const s = Math.max(0, seconds);
-  const m = Math.floor(s / 60);
-  const sec = Math.floor(s % 60);
-  return `${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
-}
 
 function isEditableTarget(t: EventTarget | null): boolean {
   if (!(t instanceof HTMLElement)) return false;
@@ -43,7 +36,6 @@ export function EditorWorkspace({ projectId }: EditorWorkspaceProps) {
   const playerRef = useRef<PlayerRef>(null);
   const previewShellRef = useRef<HTMLDivElement | null>(null);
   const headerRef = useRef<HTMLElement | null>(null);
-  const transportRef = useRef<HTMLDivElement | null>(null);
   const timelineRef = useRef<HTMLDivElement | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [showGoBackPrompt, setShowGoBackPrompt] = useState(false);
@@ -54,13 +46,8 @@ export function EditorWorkspace({ projectId }: EditorWorkspaceProps) {
   const setIsPlaying = useTimelineStore((s) => s.setIsPlaying);
   const togglePlayback = useTimelineStore((s) => s.togglePlayback);
   const directorPlanApplied = useTimelineStore((s) => s.directorPlanApplied);
-  const playheadFrame = useTimelineStore((s) => s.playheadFrame);
-  const durationInFrames = useTimelineStore((s) => s.durationInFrames);
-  const fps = useTimelineStore((s) => s.fps);
 
-  const currentSec = framesToSeconds(playheadFrame, fps);
-  const totalSec = framesToSeconds(durationInFrames, fps);
-  const headerBadgeLabel = projectId;
+  useAutoVoiceoverOnTimeline(projectId);
 
   const assemblySec = STUDIO_ASSEMBLY_MS / 1000;
   const assemblyEase = [0.22, 1, 0.36, 1] as const;
@@ -110,7 +97,7 @@ export function EditorWorkspace({ projectId }: EditorWorkspaceProps) {
 
   const onConfirmGoBack = () => {
     setShowGoBackPrompt(false);
-    router.push("/");
+    router.push("/studio");
   };
 
   const togglePreviewFullscreen = async () => {
@@ -134,11 +121,10 @@ export function EditorWorkspace({ projectId }: EditorWorkspaceProps) {
     const recalc = () => {
       const viewportH = window.innerHeight;
       const headerH = headerRef.current?.offsetHeight ?? 0;
-      const transportH = transportRef.current?.offsetHeight ?? 0;
       const timelineH = timelineRef.current?.offsetHeight ?? 0;
       // Safety buffer covers paddings/borders/gaps to prevent overlap at high zoom.
       const chromeBuffer = 46;
-      const available = viewportH - headerH - transportH - timelineH - chromeBuffer;
+      const available = viewportH - headerH - timelineH - chromeBuffer;
       const next = clamp(Math.floor(available * 0.94), 260, 720);
       setPreviewMaxHeightPx(next);
     };
@@ -146,7 +132,6 @@ export function EditorWorkspace({ projectId }: EditorWorkspaceProps) {
     recalc();
     const ro = new ResizeObserver(() => recalc());
     if (headerRef.current) ro.observe(headerRef.current);
-    if (transportRef.current) ro.observe(transportRef.current);
     if (timelineRef.current) ro.observe(timelineRef.current);
     window.addEventListener("resize", recalc);
     return () => {
@@ -182,10 +167,17 @@ export function EditorWorkspace({ projectId }: EditorWorkspaceProps) {
         </div>
       </div>
 
-      <div className="hidden h-[100dvh] flex-col overflow-hidden bg-background lg:flex">
+      <div
+        className="hidden h-[100dvh] flex-col overflow-hidden lg:flex"
+        style={{ backgroundColor: VIBE_STUDIO.canvasBg }}
+      >
         <motion.header
           ref={headerRef}
-          className="flex shrink-0 items-center justify-between gap-4 border-b border-border/80 bg-background/80 px-5 py-3 backdrop-blur-md"
+          className="flex shrink-0 items-center justify-between gap-4 border-b px-4 py-2.5 md:px-5"
+          style={{
+            backgroundColor: VIBE_STUDIO.navBg,
+            borderColor: VIBE_STUDIO.borderSubtle,
+          }}
           initial={false}
           animate={
             cinematicIdle
@@ -200,56 +192,17 @@ export function EditorWorkspace({ projectId }: EditorWorkspaceProps) {
               : { duration: assemblySec, ease: assemblyEase }
           }
         >
-          <div className="min-w-0 space-y-0.5">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-              AI Ad Studio
-            </p>
-            <div className="flex items-center gap-2">
-              <Clapperboard className="size-5 text-muted-foreground" />
-              <h1 className="truncate text-lg font-semibold tracking-tight text-foreground">
-                Studio
-              </h1>
-            </div>
-          </div>
-          <div className="flex shrink-0 items-center gap-3">
-            <Badge
-              variant="outline"
-              className="border-border/80 bg-card/40 font-mono text-[10px] backdrop-blur-sm"
-            >
-              {headerBadgeLabel}
-            </Badge>
-            {directorPlanApplied ? (
-              <>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className={cn(
-                    "h-9 shrink-0 border-amber-200/20 bg-amber-50/5 px-4 text-xs font-semibold tracking-tight text-amber-100",
-                    "shadow-[0_6px_18px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.08)]",
-                    "transition-[transform,filter] hover:scale-[1.02] hover:bg-amber-100/10",
-                  )}
-                  onClick={() => setShowGoBackPrompt(true)}
-                >
-                  Go Back
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  className={cn(
-                    "export-save-shimmer relative h-9 shrink-0 border border-white/[0.14] px-4 text-xs font-semibold tracking-tight text-white",
-                    "bg-gradient-to-b from-[oklch(0.58_0.14_264)] via-[oklch(0.51_0.15_262)] to-[oklch(0.43_0.14_260)]",
-                    "shadow-[0_0_22px_rgba(59,130,246,0.4),0_4px_18px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.16)]",
-                    "transition-[transform,filter,box-shadow] hover:scale-[1.02] hover:brightness-[1.05]",
-                    "hover:shadow-[0_0_30px_rgba(96,165,250,0.48),0_6px_22px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.2)]",
-                  )}
-                  onClick={() => setExportOpen(true)}
-                >
-                  Save &amp; Continue
-                </Button>
-              </>
-            ) : null}
-          </div>
+          <VibeStudioMark />
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            className="size-9 shrink-0 rounded-lg text-white/70 hover:bg-white/[0.08] hover:text-white"
+            aria-label="Close studio"
+            onClick={() => setShowGoBackPrompt(true)}
+          >
+            <X className="size-5" strokeWidth={1.5} />
+          </Button>
         </motion.header>
 
         <div className="flex min-h-0 flex-1">
@@ -280,12 +233,15 @@ export function EditorWorkspace({ projectId }: EditorWorkspaceProps) {
           <div className="flex min-w-0 min-h-0 flex-1 flex-col">
             <div className="flex min-h-0 min-w-0 flex-1 flex-col">
               {/* Letterboxed 16:9 stage — fixed max height so timeline never overlaps preview */}
-              <div className="relative flex min-h-0 flex-1 flex-col bg-black">
+              <div
+                className="relative flex min-h-0 flex-1 flex-col"
+                style={{ backgroundColor: VIBE_STUDIO.canvasBg }}
+              >
                 <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden px-3 py-3">
                   <div className="mx-auto w-full max-w-[1040px] shrink-0 px-1">
                     <motion.div
                       ref={previewShellRef}
-                      className="relative w-full overflow-hidden rounded-xl bg-black ring-1 ring-white/10"
+                      className="relative w-full overflow-hidden rounded-lg bg-black ring-1 ring-white/[0.08]"
                       style={{
                         aspectRatio: "16 / 9",
                         maxHeight: `${previewMaxHeightPx}px`,
@@ -320,9 +276,27 @@ export function EditorWorkspace({ projectId }: EditorWorkspaceProps) {
                       }
                     >
                       {directorPlanApplied ? (
-                        <div className="absolute inset-0">
-                          <EditorRemotionPlayer ref={playerRef} />
-                        </div>
+                        <>
+                          <div className="absolute inset-0">
+                            <EditorRemotionPlayer ref={playerRef} />
+                          </div>
+                          {!isPlaying ? (
+                            <button
+                              type="button"
+                              className="absolute inset-0 z-30 flex items-center justify-center bg-black/25 transition hover:bg-black/35"
+                              aria-label="Play preview"
+                              onClick={() => setIsPlaying(true)}
+                            >
+                              <span className="flex size-[68px] items-center justify-center rounded-full bg-white shadow-[0_12px_40px_rgba(0,0,0,0.45)]">
+                                <Play
+                                  className="ml-1 size-7 text-black"
+                                  fill="currentColor"
+                                  strokeWidth={0}
+                                />
+                              </span>
+                            </button>
+                          ) : null}
+                        </>
                       ) : (
                         <div className="absolute inset-0 flex items-center justify-center bg-[radial-gradient(circle_at_20%_15%,rgba(120,119,198,0.2),transparent_40%),radial-gradient(circle_at_80%_85%,rgba(16,185,129,0.14),transparent_42%)]">
                           <div className="w-full max-w-md rounded-2xl border border-white/10 bg-black/35 p-6 text-center shadow-[0_20px_80px_rgba(0,0,0,0.55)] backdrop-blur-xl">
@@ -368,49 +342,16 @@ export function EditorWorkspace({ projectId }: EditorWorkspaceProps) {
                 </div>
               </div>
 
-              {directorPlanApplied ? (
-                <motion.div
-                  ref={transportRef}
-                  className="flex shrink-0 items-center justify-center gap-3 border-y border-border/70 bg-card/50 px-4 py-2.5 backdrop-blur-md"
-                  initial={false}
-                  animate={
-                    cinematicIdle
-                      ? { opacity: 1, y: 0 }
-                      : shouldBootHide
-                        ? { opacity: 0, y: 14 }
-                        : { opacity: 1, y: 0 }
-                  }
-                  transition={
-                    cinematicIdle || shouldBootHide
-                      ? instant
-                      : { duration: assemblySec, ease: assemblyEase }
-                  }
-                >
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="secondary"
-                    className="size-10 shrink-0 rounded-full shadow-sm"
-                    aria-label={isPlaying ? "Pause" : "Play"}
-                    onClick={() => setIsPlaying(!isPlaying)}
-                  >
-                    {isPlaying ? (
-                      <Pause className="size-5" fill="currentColor" />
-                    ) : (
-                      <Play className="size-5 pl-0.5" fill="currentColor" />
-                    )}
-                  </Button>
-                  <span className="min-w-[8.5rem] text-center font-mono text-xs tabular-nums text-foreground/90">
-                    {formatTimecode(currentSec)} / {formatTimecode(totalSec)}
-                  </span>
-                </motion.div>
-              ) : null}
             </div>
 
             {directorPlanApplied ? (
               <motion.div
                 ref={timelineRef}
-                className="shrink-0 border-t border-border/80 bg-card/70 px-4 py-3 backdrop-blur-lg"
+                className="shrink-0 border-t px-2 py-2 md:px-3"
+                style={{
+                  backgroundColor: VIBE_STUDIO.panelBg,
+                  borderColor: VIBE_STUDIO.borderSubtle,
+                }}
                 initial={false}
                 animate={
                   cinematicIdle
@@ -430,7 +371,11 @@ export function EditorWorkspace({ projectId }: EditorWorkspaceProps) {
             ) : (
               <motion.div
                 ref={timelineRef}
-                className="shrink-0 border-t border-border/80 bg-card/60 px-4 py-4 backdrop-blur-lg"
+                className="shrink-0 border-t px-4 py-4"
+                style={{
+                  backgroundColor: VIBE_STUDIO.panelBg,
+                  borderColor: VIBE_STUDIO.borderSubtle,
+                }}
                 initial={false}
                 animate={
                   cinematicIdle
@@ -445,8 +390,8 @@ export function EditorWorkspace({ projectId }: EditorWorkspaceProps) {
                     : { duration: assemblySec, ease: assemblyEase }
                 }
               >
-                <p className="text-center text-[11px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
-                  Timeline editor unlocks after generation
+                <p className="text-center text-[10px] font-semibold uppercase tracking-[0.22em] text-white/40">
+                  Timeline unlocks after generation
                 </p>
               </motion.div>
             )}
@@ -454,7 +399,11 @@ export function EditorWorkspace({ projectId }: EditorWorkspaceProps) {
 
           {directorPlanApplied ? (
             <motion.aside
-              className="hidden w-[min(100%,360px)] shrink-0 overflow-y-auto border-l border-border/80 bg-sidebar/20 p-4 backdrop-blur-md lg:flex lg:flex-col"
+              className="hidden w-[min(100%,340px)] shrink-0 overflow-y-auto border-l p-3 md:p-4 lg:flex lg:flex-col"
+              style={{
+                backgroundColor: VIBE_STUDIO.panelBg,
+                borderColor: VIBE_STUDIO.borderSubtle,
+              }}
               initial={false}
               animate={
                 cinematicIdle
@@ -481,7 +430,21 @@ export function EditorWorkspace({ projectId }: EditorWorkspaceProps) {
         <ExportStudioModal
           open={exportOpen}
           onClose={() => setExportOpen(false)}
+          projectId={projectId}
         />
+
+        {directorPlanApplied ? (
+          <div className="pointer-events-none fixed bottom-5 right-5 z-[120] flex flex-wrap items-center justify-end gap-2 md:bottom-6 md:right-6">
+            <Button
+              type="button"
+              className="pointer-events-auto h-10 rounded-lg px-6 text-xs font-semibold text-white shadow-[0_14px_40px_rgba(79,70,229,0.42)] hover:opacity-95"
+              style={{ backgroundColor: VIBE_STUDIO.saveCta }}
+              onClick={() => setExportOpen(true)}
+            >
+              Save and continue
+            </Button>
+          </div>
+        ) : null}
       </div>
       {showGoBackPrompt ? (
         <div className="fixed inset-0 z-[140] flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm">
