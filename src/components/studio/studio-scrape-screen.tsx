@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import { useTimelineStore } from "@/lib/stores/timeline-store";
 
-const DEMO_VIDEO_SRC = "/media/demo/demo.mp4";
+const DEMO_VIDEO_SRC = "https://cdn.vibe.co/assets/demo.mp4";
 
 /** Remove this block when you no longer need the dev progress indicator. */
 const SHOW_DEV_SCRAPE_PROGRESS = false;
