@@ -11,9 +11,6 @@ const nextConfig: NextConfig = {
     : {}),
   transpilePackages: ["remotion", "@remotion/player", "@remotion/media"],
   serverExternalPackages: [
-    "kokoro-js",
-    "@huggingface/transformers",
-    "onnxruntime-node",
     "@remotion/cli",
     "@remotion/vercel",
     "@vercel/blob",
@@ -27,22 +24,12 @@ const nextConfig: NextConfig = {
    */
   outputFileTracingExcludes: {
     "/api/export-ad": [
-      "node_modules/kokoro-js/**/*",
-      "node_modules/@huggingface/transformers/**/*",
-      "node_modules/onnxruntime-node/**/*",
-      "node_modules/onnxruntime-web/**/*",
-      "node_modules/phonemizer/**/*",
       "node_modules/@prisma/client/**/*",
       "node_modules/prisma/**/*",
       "node_modules/.prisma/**/*",
       "node_modules/@prisma/engines/**/*",
     ],
     "/api/remotion-audio-proxy": [
-      "node_modules/kokoro-js/**/*",
-      "node_modules/@huggingface/transformers/**/*",
-      "node_modules/onnxruntime-node/**/*",
-      "node_modules/onnxruntime-web/**/*",
-      "node_modules/phonemizer/**/*",
       "node_modules/@prisma/client/**/*",
       "node_modules/prisma/**/*",
       "node_modules/.prisma/**/*",

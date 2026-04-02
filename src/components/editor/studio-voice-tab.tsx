@@ -241,7 +241,7 @@ export function StudioVoiceTab() {
             </SelectContent>
           </Select>
           <p className="text-[10px] text-muted-foreground">
-            Used for auto-generated and updated voiceovers. Default is a US male read suited to ads.
+            Unreal Speech TTS (cloud). Each option maps to a dashboard voice; default is a US-leaning male read.
           </p>
         </div>
         <div className="space-y-2">

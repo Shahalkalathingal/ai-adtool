@@ -1,5 +1,6 @@
 /**
- * Curated Kokoro voices for ad narration. Ids must match kokoro-js `KokoroTTS` voice keys.
+ * Voice presets for ad narration (stored as `kokoroTtsVoice` in project metadata).
+ * Server maps each id to an Unreal Speech VoiceId (Scarlett, Dan, Liv, Will, Amy).
  */
 export const KOKORO_VOICE_OPTIONS = [
   { id: "am_michael", label: "Michael — warm US male (default)", group: "US · Male" },

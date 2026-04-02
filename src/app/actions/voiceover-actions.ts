@@ -2,6 +2,10 @@
 
 import { savePublicMedia } from "@/lib/storage/public-media";
 import {
+  isUnrealSpeechConfigured,
+  synthesizeUnrealSpeechToMp3,
+} from "@/lib/services/unrealspeech-tts";
+import {
   SCENE_VOICEOVER_MAX_WORDS,
   capWordCountWithCleanEnding,
   normalizeMasterScriptWhitespace,
@@ -47,15 +51,15 @@ function normalizeMasterScript(script: string): string {
   return normalizeMasterScriptWhitespace(script);
 }
 
-function makeUniqueVoiceFilename(projectId: string): string {
+function makeUniqueVoiceFilename(projectId: string, ext: "mp3" | "wav"): string {
   const safe = projectId.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 24) || "project";
   const stamp = Date.now().toString(36);
   const rand = Math.random().toString(36).slice(2, 8);
-  return `voice-${safe}-${stamp}-${rand}.wav`;
+  return `voice-${safe}-${stamp}-${rand}.${ext}`;
 }
 
 /**
- * Concatenate voiceover scripts from the client timeline JSON and synthesize one WAV via Kokoro (local TTS).
+ * Concatenate voiceover scripts from the client timeline JSON and synthesize one MP3 via Unreal Speech.
  */
 export async function generateVoiceoverFromTimelineJson(
   projectId: string,
@@ -138,16 +142,25 @@ export async function generateVoiceoverFromTimelineJson(
     };
   }
 
-  try {
-    const { synthesizeKokoroTts } = await import("@/lib/services/kokoro-tts");
-    const buffer = await synthesizeKokoroTts(text, { voice: kokoroVoiceId });
+  if (!isUnrealSpeechConfigured()) {
+    return {
+      ok: false,
+      error:
+        "Voice generation needs UNREALSPEECH_API_KEY. Add it in Vercel (or .env.local) — see .env.example.",
+    };
+  }
 
-    const filename = makeUniqueVoiceFilename(projectId);
+  try {
+    const buffer = await synthesizeUnrealSpeechToMp3(text, {
+      kokoroVoice: kokoroVoiceId,
+    });
+
+    const filename = makeUniqueVoiceFilename(projectId, "mp3");
     const saved = await savePublicMedia({
       projectId,
       filename,
       buffer,
-      contentType: "audio/wav",
+      contentType: "audio/mpeg",
     });
     if (!saved.ok) {
       return { ok: false, error: saved.error };
