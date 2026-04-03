@@ -81,7 +81,7 @@ const NICHE_STOCK: Record<AdNicheId, string[]> = {
     `https://images.unsplash.com/photo-1556217477-5605125586f0?${Q}`,
     `https://images.unsplash.com/photo-1523275335684-37898b6baf30?${Q}`,
     `https://images.unsplash.com/photo-1505740420928-5e560c06d30e?${Q}`,
-    `https://images.unsplash.com/photo-1542291026-7eec264c27ff?${Q}`,
+    `https://images.unsplash.com/photo-1472851294608-062f824d29cc?${Q}`,
     `https://images.unsplash.com/photo-1572635196237-14b3f281503f?${Q}`,
     `https://images.unsplash.com/photo-1560393464-5c69a73c5770?${Q}`,
     `https://images.unsplash.com/photo-1543163521-1bf539c55dd2?${Q}`,

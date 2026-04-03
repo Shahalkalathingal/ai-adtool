@@ -58,12 +58,31 @@ export function isLikelyTinyDimensionsInUrl(url: string): boolean {
   return false;
 }
 
+/**
+ * Third-party athletic / sneaker brand imagery from Serp or CDNs — not appropriate as generic ad stills
+ * when the advertiser isn’t that brand.
+ */
+export function isThirdPartyAthleticBrandImageUrl(url: string): boolean {
+  const u = url.toLowerCase();
+  if (
+    /(^|\/\/)([^/]*\.)?nike\.|\/nike\/|\/nike-|\/nike_|nikeinc\.|niketown/i.test(
+      u,
+    )
+  ) {
+    return true;
+  }
+  if (/(^|\/\/)([^/]*\.)?(adidas|reebok|puma)\./i.test(u)) return true;
+  if (/\/(adidas|puma|reebok)\//i.test(u)) return true;
+  return false;
+}
+
 /** Drop obvious junk before enrichment / Gemini — stricter than https-only. */
 export function isProblematicImageUrlForAds(url: string): boolean {
   return (
     isLowResOrGenericImageUrl(url) ||
     isSocialOrAvatarImageUrl(url) ||
-    isLikelyTinyDimensionsInUrl(url)
+    isLikelyTinyDimensionsInUrl(url) ||
+    isThirdPartyAthleticBrandImageUrl(url)
   );
 }
 

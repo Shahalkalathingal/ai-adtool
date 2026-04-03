@@ -24,6 +24,7 @@ import {
 } from "@/lib/audio/volume-pct";
 import { HEADLINE_FONT } from "@/remotion/components/HeadlineLayer";
 import { VIBE_STUDIO } from "@/lib/ui/vibe-studio-tokens";
+import { DEFAULT_SCENE_STILL_URL } from "@/lib/images/default-scene-still";
 
 const LUX_DETAIL_FONT =
   'var(--font-geist-sans, "Geist Sans"), Inter, ui-sans-serif, system-ui, sans-serif';
@@ -81,8 +82,7 @@ export type AdStudioExportInputProps = AdStudioCompositionProps & {
   __compositionFps: number;
 };
 
-const PLACEHOLDER_STILL =
-  "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=1280&h=720&fit=crop&q=80";
+const PLACEHOLDER_STILL = DEFAULT_SCENE_STILL_URL;
 
 function sceneMotionFingerprint(visual: RemotionClipInput): number {
   const si =

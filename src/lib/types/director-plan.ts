@@ -1,5 +1,10 @@
 import { z } from "zod";
 import {
+  filterGlobalBlockedUnsplashUrls,
+  isGloballyBlockedImageUrl,
+} from "@/lib/images/automotive-image-url-filter";
+import { DEFAULT_SCENE_STILL_URL } from "@/lib/images/default-scene-still";
+import {
   SCENE_VOICEOVER_MAX_WORDS,
   capWordCountWithCleanEnding,
 } from "@/lib/voiceover/master-script-policy";
@@ -48,8 +53,7 @@ export type DirectorPlan = z.infer<typeof directorPlanSchema>;
 export type ScrapedBrand = z.infer<typeof scrapedBrandSchema>;
 
 /** Single still used when no scraper/Serp image is available (sync with composition placeholder). */
-export const DIRECTOR_PLAN_FALLBACK_STILL =
-  "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=1280&h=720&fit=crop&q=80";
+export const DIRECTOR_PLAN_FALLBACK_STILL = DEFAULT_SCENE_STILL_URL;
 
 function formatVoiceoverSingleSentence(text: string): string {
   const cleaned = text
@@ -126,9 +130,11 @@ export function normalizeDirectorPlan(plan: DirectorPlan): DirectorPlan {
     voiceover: formatVoiceoverSingleSentence(s.voiceover),
   }));
 
-  let urls =
-    plan.productImageUrls?.filter((u) => typeof u === "string" && u.trim().length > 8) ??
-    [];
+  let urls = filterGlobalBlockedUnsplashUrls(
+    plan.productImageUrls?.filter(
+      (u) => typeof u === "string" && u.trim().length > 8,
+    ) ?? [],
+  );
   if (urls.length === 0) {
     urls = [DIRECTOR_PLAN_FALLBACK_STILL];
   }
@@ -173,13 +179,21 @@ function isPlausibleSceneImageUrl(u: string): boolean {
  * Picks a cycling still for every scene and expands `productImageUrls` so export never uses a blank visual.
  */
 export function ensureDirectorPlanSceneImages(plan: DirectorPlan): DirectorPlan {
-  const poolIn = dedupeHttpsUrls(plan.productImageUrls);
+  const poolIn = dedupeHttpsUrls(
+    filterGlobalBlockedUnsplashUrls([...plan.productImageUrls]),
+  );
   const safePool =
     poolIn.length > 0 ? poolIn : [DIRECTOR_PLAN_FALLBACK_STILL];
 
   const scenes = plan.scenes.map((s, i) => {
     const u = s.imageUrl?.trim();
-    if (u && isPlausibleSceneImageUrl(u)) return s;
+    if (
+      u &&
+      isPlausibleSceneImageUrl(u) &&
+      !isGloballyBlockedImageUrl(u)
+    ) {
+      return s;
+    }
     return { ...s, imageUrl: safePool[i % safePool.length] };
   });
 
@@ -196,7 +210,9 @@ export function ensureDirectorPlanSceneImages(plan: DirectorPlan): DirectorPlan 
     ];
     i += 1;
   }
-  productImageUrls = productImageUrls.slice(0, 12);
+  productImageUrls = filterGlobalBlockedUnsplashUrls(
+    productImageUrls.slice(0, 12),
+  );
 
   return { ...plan, scenes, productImageUrls };
 }
