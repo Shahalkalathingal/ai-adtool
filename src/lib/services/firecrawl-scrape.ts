@@ -214,13 +214,27 @@ export function extractContactHints(markdown: string): ContactHints {
   return hints;
 }
 
+function dedupeHttpsImageUrls(urls: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of urls) {
+    const u = raw.trim();
+    if (!u) continue;
+    const k = u.split("?")[0]?.toLowerCase() ?? u.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(u);
+  }
+  return out;
+}
+
 function buildPageIntel(
   markdown: string,
   sourceUrl: string,
   metadata?: Record<string, unknown>,
 ): ScrapedPageIntel {
   const contact = extractContactHints(markdown);
-  const candidates = extractImageUrlsFromMarkdown(markdown);
+  const fromMarkdown = extractImageUrlsFromMarkdown(markdown);
 
   const ogImage =
     typeof metadata?.ogImage === "string"
@@ -231,6 +245,14 @@ function buildPageIntel(
 
   const title =
     typeof metadata?.title === "string" ? metadata.title : undefined;
+
+  const ogAsCandidate =
+    ogImage &&
+    isLikelyProductImage(ogImage) &&
+    !isProblematicImageUrlForAds(ogImage)
+      ? [ogImage]
+      : [];
+  const candidates = dedupeHttpsImageUrls([...ogAsCandidate, ...fromMarkdown]);
 
   let logoUrl: string | undefined;
   const metaLogo = inferLogoFromMetadata(metadata);

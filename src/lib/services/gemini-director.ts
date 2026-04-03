@@ -39,7 +39,7 @@ function buildPrompt(input: {
       ? `Site primaryDomain (hostname only): ${input.pageIntel.primaryDomain}`
       : null,
     input.pageIntel.productImageCandidates.length
-      ? `Image URL candidates from page (prefer these for productImageUrls): ${input.pageIntel.productImageCandidates.slice(0, 14).join("\n")}`
+      ? `Image URL candidates from the SCRAPED PAGE (same brand/site as Source URL — prioritize these for productImageUrls): ${input.pageIntel.productImageCandidates.slice(0, 16).join("\n")}`
       : null,
   ]
     .filter(Boolean)
@@ -89,7 +89,7 @@ Strict rules:
 - 16:9 framing — headlines are lower-third safe; visuals are product/lifestyle.
 - scrapedBrand must contain ONLY these fields when known from hints (no markdown, no random URLs in address):
   companyName, cleanAddress (one line street/city/state/zip), phoneNumber (formatted), logoUrl (https image), primaryDomain (hostname only, no path).
-- productImageUrls: MUST include 8 to 10 DISTINCT https URLs of sharp product/lifestyle stills suitable for 16:9. The "Image URL candidates" list is ordered by the server: **high-resolution, category-appropriate stock (often Unsplash) may appear first when on-page grabs are weak** — prefer those over tiny, blurry, or irrelevant blog/nav images even if they came from the site. Use on-page URLs only when they look like real product or brand photography (not icons, thumbs, or random editorial). Do NOT invent domains. If fewer than 8 distinct winners exist, repeat the best URLs to reach 8 (still list 8–10 strings).${automotiveImageRule}
+- productImageUrls: MUST include 8 to 10 DISTINCT https URLs of sharp product/lifestyle stills suitable for 16:9. **Prioritize URLs from the scraped page** (the "Image URL candidates" list — includes og:image and images found in page markdown). Those are from the user-provided Source URL or its CDNs; they must dominate the set. Use generic stock URLs from the list only to fill gaps when there are not enough sharp on-brand candidates. Reject irrelevant stock. Do NOT invent domains. If fewer than 8 distinct winners exist, repeat the best on-brand URLs to reach 8 (still list 8–10 strings).${automotiveImageRule}
 - Each scene may set imageUrl to pin a specific still, or omit to cycle productImageUrls by scene index.
 
 JSON shape (strict field names):

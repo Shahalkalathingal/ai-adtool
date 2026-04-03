@@ -53,6 +53,19 @@ function hostMatchesPreferredImageUrl(
   return h.endsWith(`.${preferred}`);
 }
 
+/** Count images whose host matches the scraped page (or its www variant). */
+export function countPreferredHostImages(
+  urls: string[],
+  preferredHost: string | null,
+): number {
+  if (!preferredHost) return 0;
+  let n = 0;
+  for (const u of urls) {
+    if (hostMatchesPreferredImageUrl(u, preferredHost)) n += 1;
+  }
+  return n;
+}
+
 function padProductImageUrls(
   urls: string[],
   minLen: number,
@@ -88,28 +101,42 @@ function rankImageUrls(
   urls: string[],
   preferredHost: string | null = null,
   nicheStockKeys: Set<string> | null = null,
+  /** URLs first seen on the scraped page (Firecrawl markdown / og:image) — highest priority. */
+  scrapedPageImageKeys: Set<string> | null = null,
 ): string[] {
+  const hasScraped = scrapedPageImageKeys && scrapedPageImageKeys.size > 0;
   const withScore = urls.map((u) => {
     const s = u.toLowerCase();
+    const pathKey = nicheStockPathKey(u);
     let score = 0;
     if (!isLowResOrGenericImageUrl(u)) score += 5;
-    if (nicheStockKeys?.has(nicheStockPathKey(u))) score += 8;
+    if (scrapedPageImageKeys?.has(pathKey)) {
+      score += 42;
+    }
+    if (nicheStockKeys?.has(pathKey)) score += 6;
     if (/images\.unsplash\.com\/photo-/.test(s)) {
-      score += 4;
+      let unsplashPts = 4;
       if (
         /[?&]w=(1[2-9]\d{2}|[2-9]\d{3,})\b/.test(s) ||
         /[?&]h=(7\d{2}|[8-9]\d{2,})\b/.test(s) ||
         /fit=crop/.test(s)
       ) {
-        score += 3;
+        unsplashPts += 3;
       }
+      if (hasScraped && preferredHost) {
+        unsplashPts -= 14;
+      }
+      score += unsplashPts;
     } else if (/pexels\.com|pixabay\.com/.test(s)) {
-      score += 3;
+      let p = 3;
+      if (hasScraped && preferredHost) p -= 10;
+      score += p;
     }
     if (preferredHost && hostMatchesPreferredImageUrl(u, preferredHost)) {
-      score += 8;
+      score += 22;
     } else if (
       preferredHost &&
+      !scrapedPageImageKeys?.has(pathKey) &&
       !/images\.unsplash\.com|pexels\.com|pixabay\.com/.test(s) &&
       !/(shopifycdn|cdn\.shopify|cloudinary|imgix|cloudfront)\b/.test(s)
     ) {
@@ -286,6 +313,7 @@ export function mergeSerpUrlsIntoPlan(
     productImageUrls,
     preferredHost,
     nicheStockKeySetFor(stockNiche),
+    null,
   );
   productImageUrls = padProductImageUrls(
     productImageUrls,
@@ -320,6 +348,9 @@ export async function enrichPageIntelCandidatesWithSerp(
   const nichePool = getNicheStockImagePool(effectiveNiche);
 
   const stockKeys = nicheStockKeySetFor(effectiveNiche);
+  /** Keys for URLs taken directly from the scraped page (markdown / og:image). */
+  const scrapedPageImageKeys = new Set(base.map((u) => nicheStockPathKey(u)));
+
   const rankCandidatePool = (urls: string[], cap: number): string[] => {
     const cleaned = highQualityOnly(dedupe(urls));
     let ranked: string[];
@@ -328,27 +359,59 @@ export async function enrichPageIntelCandidatesWithSerp(
         [...getNicheStockImagePool(effectiveNiche)],
         preferredHost,
         stockKeys,
+        null,
       ).slice(0, cap);
     } else {
-      ranked = rankImageUrls(cleaned, preferredHost, stockKeys).slice(0, cap);
+      ranked = rankImageUrls(
+        cleaned,
+        preferredHost,
+        stockKeys,
+        scrapedPageImageKeys,
+      ).slice(0, cap);
     }
     return filterProductImageUrlsForNiche(ranked, effectiveNiche);
   };
 
+  /** Always prefer on-page images first; stock is only filler. */
+  const candidateMergeOrder = [...base, ...nichePool];
+
   const weakScrape =
     countHighQualityImageUrls(candidates) < 4 ||
     shouldSerpEnrichImageCandidates(candidates);
-  const candidateMergeOrder = weakScrape
-    ? [...nichePool, ...base]
-    : [...base, ...nichePool];
+  /** Enough on-page grabs (incl. CDNs) → supplement only with `site:` Serp, not generic stock searches. */
+  const strongScrape =
+    base.length >= 6 ||
+    (base.length >= 4 && countPreferredHostImages(base, preferredHost) >= 2);
 
   if (!isSerpImageSearchConfigured()) {
     return rankCandidatePool(dedupe([...candidateMergeOrder]), 24);
   }
-  if (!shouldSerpEnrichImageCandidates(base) && base.length >= 8) {
+  if (!weakScrape && base.length >= 8) {
     return rankCandidatePool([...candidateMergeOrder], 24);
   }
+
+  const siteQueryStr = preferredHost
+    ? buildSiteImageQuery(preferredHost, companyName, pageTitle)
+    : null;
+
   try {
+    if (strongScrape && siteQueryStr) {
+      const qSite = await fetchGoogleImageUrls(siteQueryStr, 22);
+      const merged = highQualityOnly([...base, ...qSite, ...nichePool]);
+      if (merged.length === 0) {
+        return rankCandidatePool([...getNicheStockImagePool(effectiveNiche)], 28);
+      }
+      return filterProductImageUrlsForNiche(
+        rankImageUrls(
+          merged,
+          preferredHost,
+          stockKeys,
+          scrapedPageImageKeys,
+        ).slice(0, 28),
+        effectiveNiche,
+      );
+    }
+
     const brandQuery = buildBrandNicheImageQuery(
       companyName,
       pageTitle,
@@ -358,39 +421,39 @@ export async function enrichPageIntelCandidatesWithSerp(
       companyName,
       pageTitle,
       effectiveNiche,
-    ).map(
-      (q) => `${q} high quality social media ad photography`,
-    );
+    ).map((q) => `${q} high quality social media ad photography`);
     const boostA = nicheBoost[0] ?? brandQuery;
     const boostB = nicheBoost[1] ?? nicheQueries[2] ?? brandQuery;
-    const siteQueryStr = preferredHost
-      ? buildSiteImageQuery(preferredHost, companyName, pageTitle)
-      : null;
     const [q1, q2, q3, q4, qSite] = await Promise.all([
       fetchGoogleImageUrls(brandQuery, 16),
       fetchGoogleImageUrls(nicheQueries[0] ?? brandQuery, 12),
       fetchGoogleImageUrls(nicheQueries[1] ?? brandQuery, 12),
       fetchGoogleImageUrls(boostA, 12),
       siteQueryStr
-        ? fetchGoogleImageUrls(siteQueryStr, 14)
+        ? fetchGoogleImageUrls(siteQueryStr, 16)
         : Promise.resolve<string[]>([]),
     ]);
-    const extra = boostB !== boostA ? await fetchGoogleImageUrls(boostB, 10) : [];
-    const head = weakScrape ? [...nichePool, ...base] : [...base, ...nichePool];
+    const extra =
+      boostB !== boostA ? await fetchGoogleImageUrls(boostB, 10) : [];
     const merged = highQualityOnly([
-      ...head,
+      ...candidateMergeOrder,
+      ...qSite,
       ...q1,
       ...q2,
       ...q3,
       ...q4,
-      ...qSite,
       ...extra,
     ]);
     if (merged.length === 0) {
       return rankCandidatePool([...getNicheStockImagePool(effectiveNiche)], 28);
     }
     return filterProductImageUrlsForNiche(
-      rankImageUrls(merged, preferredHost, stockKeys).slice(0, 28),
+      rankImageUrls(
+        merged,
+        preferredHost,
+        stockKeys,
+        scrapedPageImageKeys,
+      ).slice(0, 28),
       effectiveNiche,
     );
   } catch {
@@ -415,13 +478,19 @@ export async function finalizeDirectorPlanImages(
   });
   const nicheStock = getNicheStockImagePool(effectiveNiche);
   const finalizeKeys = nicheStockKeySetFor(effectiveNiche);
+  const hqPlan = highQualityOnly(plan.productImageUrls);
+  const hostRich = countPreferredHostImages(hqPlan, preferredHost) >= 5;
+  const poolForInitialRank = hostRich
+    ? hqPlan
+    : highQualityOnly([...plan.productImageUrls, ...nicheStock]);
   let next = {
     ...plan,
     productImageUrls: filterProductImageUrlsForNiche(
       rankImageUrls(
-        highQualityOnly([...plan.productImageUrls, ...nicheStock]),
+        poolForInitialRank,
         preferredHost,
         finalizeKeys,
+        null,
       ),
       effectiveNiche,
     ),
@@ -430,8 +499,9 @@ export async function finalizeDirectorPlanImages(
   if (isSerpImageSearchConfigured()) {
     const pool = next.productImageUrls;
     const weak =
-      shouldSerpEnrichImageCandidates(pool) ||
-      countHighQualityImageUrls(pool) < 5;
+      !hostRich &&
+      (shouldSerpEnrichImageCandidates(pool) ||
+        countHighQualityImageUrls(pool) < 5);
     if (weak) {
       try {
         const q = buildVoiceoverKeywordImageQuery(
@@ -462,6 +532,7 @@ export async function finalizeDirectorPlanImages(
     hardenedPool,
     preferredHost,
     finalizeKeys,
+    null,
   ).slice(0, MAX_PLAN_PRODUCT_IMAGES);
   productImageUrls = padProductImageUrls(
     productImageUrls,
