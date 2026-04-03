@@ -18,6 +18,20 @@ const NICHE_STOCK: Record<AdNicheId, string[]> = {
     `https://images.unsplash.com/photo-1552664730-d307ca884978?${Q}`,
     `https://images.unsplash.com/photo-1507679799987-c73779587ccf?${Q}`,
   ],
+  automotive: [
+    `https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?${Q}`,
+    `https://images.unsplash.com/photo-1503376780353-7e6692767b70?${Q}`,
+    `https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?${Q}`,
+    `https://images.unsplash.com/photo-1489827910844-779f1bb1b769?${Q}`,
+    `https://images.unsplash.com/photo-1583121274602-3e282013e6f8?${Q}`,
+    `https://images.unsplash.com/photo-1494976388532-dfff2c949b8f?${Q}`,
+    `https://images.unsplash.com/photo-1502877338535-766e1452684a?${Q}`,
+    `https://images.unsplash.com/photo-1580273916550-e448d7b7e0b0?${Q}`,
+    `https://images.unsplash.com/photo-1552519507-da3b142c6e3d?${Q}`,
+    `https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?${Q}`,
+    `https://images.unsplash.com/photo-1618843479313-40f8afb4b4d8?${Q}`,
+    `https://images.unsplash.com/photo-1605559424843-9e4c228bf1c2?${Q}`,
+  ],
   legal: [
     `https://images.unsplash.com/photo-1589829546656-cbc9d9297f9b?${Q}`,
     `https://images.unsplash.com/photo-1450101499163-c8848c66ca85?${Q}`,
@@ -197,6 +211,24 @@ function inferStockNicheFromSignals(signals: {
   } catch {
     /* noop */
   }
+
+  const text = `${signals.companyName ?? ""} ${signals.pageTitle ?? ""}`.toLowerCase();
+  const automotiveBlob = `${text} ${path} ${(signals.sourceUrl ?? "").toLowerCase()}`;
+
+  if (
+    /\b(cadillac|chevrolet|chevy|ford|lincoln|toyota|lexus|honda|acura|bmw|mercedes|audi|porsche|volkswagen|\bvw\b|nissan|infiniti|hyundai|kia|subaru|mazda|jeep|\bram\b|dodge|chrysler|gmc|buick|dealership|car dealer|auto dealer|auto group|new vehicles|used cars|pre-?owned|cpo\b|certified pre|automotive|motor company|\bmotors\b|showroom|vehicle specials|inventory specials)\b/.test(
+      automotiveBlob,
+    ) ||
+    /\/(inventory|vehicles|cars-trucks|new-vehicles|used-vehicles|pre-owned|showroom|dealership|financing|auto)\b/.test(
+      path,
+    ) ||
+    /\b(sewell|autonation|carmax|carfax|cars\.com|dealer\.com)\b/.test(
+      automotiveBlob,
+    )
+  ) {
+    return "automotive";
+  }
+
   if (
     /\/(shop|store|products?|collections?|cart|checkout|catalog|buy|sale|new-arrivals?)\b/.test(
       path,
@@ -206,7 +238,6 @@ function inferStockNicheFromSignals(signals: {
     return "ecommerce_product";
   }
 
-  const text = `${signals.companyName ?? ""} ${signals.pageTitle ?? ""}`.toLowerCase();
   if (
     /\b(shopify|woocommerce|bigcommerce|magento|squarespace commerce|add to cart|buy now|free shipping|size guide|in stock|out of stock)\b/.test(
       text,
@@ -247,6 +278,10 @@ function inferStockNicheFromSignals(signals: {
 export function getNicheSerpBoostQueries(niche: AdNicheId): string[] {
   const map: Record<AdNicheId, string[]> = {
     general: ["premium brand lifestyle photography 4k"],
+    automotive: [
+      "luxury car dealership showroom photography",
+      "new car dealer lot exterior professional",
+    ],
     legal: ["law firm office professional photography", "attorney consultation room"],
     real_estate: ["luxury real estate interior photography", "modern home exterior golden hour"],
     saas_tech: ["technology startup office team", "software dashboard on laptop"],

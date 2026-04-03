@@ -17,6 +17,7 @@ import { isLikelyProductImage } from "@/lib/services/firecrawl-scrape";
 import type { AdNicheId } from "@/lib/services/neural-script-architect";
 import { sanitizeAdNicheId } from "@/lib/services/neural-script-architect";
 import { fetchGoogleImageUrls, isSerpImageSearchConfigured } from "@/lib/services/serpapi-google-images";
+import { filterProductImageUrlsForNiche } from "@/lib/images/automotive-image-url-filter";
 
 export {
   isLowResOrGenericImageUrl,
@@ -140,11 +141,15 @@ function highQualityOnly(urls: string[]): string[] {
 export function buildBrandNicheImageQuery(
   companyName: string | undefined,
   pageTitle: string | undefined,
+  niche?: AdNicheId,
 ): string {
   const name =
     (companyName?.trim() || pageTitle?.split(/[|–—-]/)[0]?.trim() || "brand")
       .replace(/\s+/g, " ")
       .slice(0, 80) || "brand";
+  if (niche === "automotive") {
+    return `${name} car dealership showroom new vehicle SUV sedan photography`;
+  }
   return `${name} interior products store lifestyle photography`;
 }
 
@@ -160,7 +165,18 @@ function buildSiteImageQuery(
   return `site:${host} ${seed} photo`.trim();
 }
 
-function deriveNicheTerms(companyName?: string, pageTitle?: string): string[] {
+function deriveNicheTerms(
+  companyName?: string,
+  pageTitle?: string,
+  effectiveNiche?: AdNicheId,
+): string[] {
+  if (effectiveNiche === "automotive") {
+    return [
+      "luxury car dealership showroom",
+      "new vehicle dealer lot photography",
+      "automotive showroom professional",
+    ];
+  }
   const text = `${companyName ?? ""} ${pageTitle ?? ""}`.toLowerCase();
   if (/law|attorney|legal|injury|litigation/.test(text)) {
     return ["law office", "legal consultation", "professional attorney"];
@@ -221,6 +237,7 @@ const VO_STOP = new Set([
 
 export function buildVoiceoverKeywordImageQuery(
   scenes: DirectorScene[],
+  niche?: AdNicheId,
 ): string {
   const text = scenes
     .map((s) => s.voiceover || "")
@@ -232,8 +249,16 @@ export function buildVoiceoverKeywordImageQuery(
     .map((w) => w.replace(/[^a-z]/g, ""))
     .filter((w) => w.length > 3 && !VO_STOP.has(w));
   const uniq = [...new Set(words)].slice(0, 7);
-  if (uniq.length === 0) return "premium retail lifestyle photography";
-  return `${uniq.join(" ")} high quality professional photography`;
+  if (uniq.length === 0) {
+    return niche === "automotive"
+      ? "luxury automotive dealership new car showroom photography"
+      : "premium retail lifestyle photography";
+  }
+  const tail = `${uniq.join(" ")} high quality professional photography`;
+  if (niche === "automotive") {
+    return `car dealership automotive ${tail}`.slice(0, 280);
+  }
+  return tail;
 }
 
 function dedupe(list: string[]): string[] {
@@ -270,6 +295,7 @@ export function mergeSerpUrlsIntoPlan(
     MIN_PLAN_PRODUCT_IMAGES,
     MAX_PLAN_PRODUCT_IMAGES,
   );
+  productImageUrls = filterProductImageUrlsForNiche(productImageUrls, stockNiche);
   return { ...plan, productImageUrls };
 }
 
@@ -299,14 +325,17 @@ export async function enrichPageIntelCandidatesWithSerp(
   const stockKeys = nicheStockKeySetFor(effectiveNiche);
   const rankCandidatePool = (urls: string[], cap: number): string[] => {
     const cleaned = highQualityOnly(dedupe(urls));
+    let ranked: string[];
     if (cleaned.length === 0) {
-      return rankImageUrls(
+      ranked = rankImageUrls(
         [...getNicheStockImagePool(effectiveNiche)],
         preferredHost,
         stockKeys,
       ).slice(0, cap);
+    } else {
+      ranked = rankImageUrls(cleaned, preferredHost, stockKeys).slice(0, cap);
     }
-    return rankImageUrls(cleaned, preferredHost, stockKeys).slice(0, cap);
+    return filterProductImageUrlsForNiche(ranked, effectiveNiche);
   };
 
   const weakScrape =
@@ -323,8 +352,16 @@ export async function enrichPageIntelCandidatesWithSerp(
     return rankCandidatePool([...candidateMergeOrder], 24);
   }
   try {
-    const brandQuery = buildBrandNicheImageQuery(companyName, pageTitle);
-    const nicheQueries = deriveNicheTerms(companyName, pageTitle).map(
+    const brandQuery = buildBrandNicheImageQuery(
+      companyName,
+      pageTitle,
+      effectiveNiche,
+    );
+    const nicheQueries = deriveNicheTerms(
+      companyName,
+      pageTitle,
+      effectiveNiche,
+    ).map(
       (q) => `${q} high quality social media ad photography`,
     );
     const boostA = nicheBoost[0] ?? brandQuery;
@@ -355,7 +392,10 @@ export async function enrichPageIntelCandidatesWithSerp(
     if (merged.length === 0) {
       return rankCandidatePool([...getNicheStockImagePool(effectiveNiche)], 28);
     }
-    return rankImageUrls(merged, preferredHost, stockKeys).slice(0, 28);
+    return filterProductImageUrlsForNiche(
+      rankImageUrls(merged, preferredHost, stockKeys).slice(0, 28),
+      effectiveNiche,
+    );
   } catch {
     return rankCandidatePool(dedupe([...candidateMergeOrder]), 24);
   }
@@ -380,10 +420,13 @@ export async function finalizeDirectorPlanImages(
   const finalizeKeys = nicheStockKeySetFor(effectiveNiche);
   let next = {
     ...plan,
-    productImageUrls: rankImageUrls(
-      highQualityOnly([...plan.productImageUrls, ...nicheStock]),
-      preferredHost,
-      finalizeKeys,
+    productImageUrls: filterProductImageUrlsForNiche(
+      rankImageUrls(
+        highQualityOnly([...plan.productImageUrls, ...nicheStock]),
+        preferredHost,
+        finalizeKeys,
+      ),
+      effectiveNiche,
     ),
   };
 
@@ -394,7 +437,10 @@ export async function finalizeDirectorPlanImages(
       countHighQualityImageUrls(pool) < 5;
     if (weak) {
       try {
-        const q = buildVoiceoverKeywordImageQuery(next.scenes);
+        const q = buildVoiceoverKeywordImageQuery(
+          next.scenes,
+          effectiveNiche,
+        );
         const [foundA, foundB] = await Promise.all([
           fetchGoogleImageUrls(q, 18),
           fetchGoogleImageUrls(`${q} social media campaign`, 14),
@@ -424,6 +470,10 @@ export async function finalizeDirectorPlanImages(
     productImageUrls,
     MIN_PLAN_PRODUCT_IMAGES,
     MAX_PLAN_PRODUCT_IMAGES,
+  );
+  productImageUrls = filterProductImageUrlsForNiche(
+    productImageUrls,
+    effectiveNiche,
   );
   return ensureDirectorPlanSceneImages({
     ...next,

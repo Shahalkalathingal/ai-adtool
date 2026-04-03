@@ -21,6 +21,7 @@ export {
 /** Niche selector → industry tone for the Neural Script Architect. */
 export const AD_NICHE_IDS = [
   "general",
+  "automotive",
   "legal",
   "real_estate",
   "saas_tech",
@@ -38,6 +39,7 @@ export type AdNicheId = (typeof AD_NICHE_IDS)[number];
 /** UI labels for the niche selector (values must stay in sync with `AD_NICHE_IDS`). */
 export const AD_NICHE_OPTIONS: { id: AdNicheId; label: string }[] = [
   { id: "general", label: "General" },
+  { id: "automotive", label: "Automotive / dealer" },
   { id: "legal", label: "Legal" },
   { id: "real_estate", label: "Real estate" },
   { id: "saas_tech", label: "SaaS / Tech" },
@@ -62,6 +64,8 @@ function nicheToneBlock(niche: AdNicheId): string {
   const map: Record<AdNicheId, string> = {
     general:
       "Confident, clear, conversion-focused. Sound human and specific—never generic.",
+    automotive:
+      "Tone: premium, confident, showroom energy. Trust, selection, and the ownership experience—never generic retail or unrelated sportswear vibes.",
     legal:
       "Tone: trustworthy, authoritative, serious. Emphasize credentials, clarity, and protection—no hype, no slang.",
     real_estate:
