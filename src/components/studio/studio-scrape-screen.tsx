@@ -6,8 +6,8 @@ import { useTimelineStore } from "@/lib/stores/timeline-store";
 
 const DEMO_VIDEO_SRC = "https://cdn.vibe.co/assets/demo.mp4";
 
-/** Remove this block when you no longer need the dev progress indicator. */
-const SHOW_DEV_SCRAPE_PROGRESS = false;
+/** Ramp duration for the “busy” phase so % keeps moving without hitting 100% early. */
+const BUSY_RAMP_MS = 14_000;
 
 export function StudioScrapeScreen() {
   const directorGenerationBusy = useTimelineStore(
@@ -15,7 +15,7 @@ export function StudioScrapeScreen() {
   );
   const directorPlanApplied = useTimelineStore((s) => s.directorPlanApplied);
 
-  const [devPct, setDevPct] = useState(8);
+  const [generationPct, setGenerationPct] = useState(5);
   const previewVideoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
@@ -29,23 +29,34 @@ export function StudioScrapeScreen() {
   }, []);
 
   useEffect(() => {
-    if (!SHOW_DEV_SCRAPE_PROGRESS) return;
     if (directorPlanApplied) {
-      setDevPct(100);
+      setGenerationPct(100);
       return;
     }
-    if (!directorGenerationBusy) {
-      setDevPct((p) => (p >= 100 ? 100 : Math.min(p, 22)));
-      return;
+    if (directorGenerationBusy) {
+      const started = Date.now();
+      const id = window.setInterval(() => {
+        const elapsed = Date.now() - started;
+        const t = Math.min(1, elapsed / BUSY_RAMP_MS);
+        setGenerationPct(14 + t * 76);
+      }, 80);
+      return () => window.clearInterval(id);
     }
-    const started = Date.now();
     const id = window.setInterval(() => {
-      const elapsed = Date.now() - started;
-      const t = Math.min(1, elapsed / 14_000);
-      setDevPct(12 + t * 78);
-    }, 80);
+      setGenerationPct((p) => Math.min(p + 0.28, 13));
+    }, 140);
     return () => window.clearInterval(id);
   }, [directorGenerationBusy, directorPlanApplied]);
+
+  const statusLine = directorPlanApplied
+    ? "Wrapping up — opening your timeline…"
+    : directorGenerationBusy
+      ? "Generating your ad — scenes, voice, and brand…"
+      : "Starting pipeline — connecting to your page…";
+
+  const pctRounded = Math.round(
+    Math.min(100, Math.max(0, generationPct)),
+  );
 
   return (
     <div className="min-h-dvh bg-[#000000] font-sans text-white antialiased">
@@ -71,50 +82,58 @@ export function StudioScrapeScreen() {
                 }}
               />
             </div>
+          </section>
 
-            {SHOW_DEV_SCRAPE_PROGRESS ? (
-              <div className="mt-8 w-full max-w-[420px]">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-200/80">
-                  Dev only — pipeline progress
-                </p>
+          <section className="relative min-h-[320px] overflow-hidden rounded-2xl border border-white/[0.08] bg-[#0a0a0a] lg:min-h-0">
+            <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_50%_0%,rgba(124,58,237,0.12),transparent),radial-gradient(ellipse_70%_50%_at_100%_100%,rgba(59,130,246,0.1),transparent)]" />
+            <div className="relative z-10 flex h-full min-h-[320px] flex-col p-4 md:p-6">
+              <div className="mb-3 flex shrink-0 justify-end md:mb-4">
                 <div
-                  className="mt-2 rounded-xl border border-white/[0.12] bg-white/[0.04] px-3 py-3"
-                  style={{
-                    boxShadow:
-                      "0 0 0 1.5px rgba(139,92,246,0.35), 0 0 0 1px rgba(56,189,248,0.2), 0 0 28px rgba(99,102,241,0.18), inset 0 1px 0 rgba(255,255,255,0.06)",
-                  }}
+                  className="w-full max-w-[min(100%,320px)] rounded-xl border border-white/[0.12] bg-white/[0.04] px-3.5 py-3 shadow-[0_0_0_1px_rgba(139,92,246,0.25),0_0_0_1px_rgba(56,189,248,0.12),0_12px_40px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-sm md:px-4 md:py-3.5"
+                  role="progressbar"
+                  aria-live="polite"
+                  aria-valuenow={pctRounded}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-label="Ad generation progress"
                 >
-                  <div className="flex items-center justify-between gap-3 text-[11px] text-white/55">
-                    <span>
-                      {directorPlanApplied
-                        ? "Timeline ready"
-                        : directorGenerationBusy
-                          ? "Director / scrape running…"
-                          : "Waiting for pipeline…"}
-                    </span>
-                    <span className="font-mono tabular-nums text-violet-200/90">
-                      {Math.round(devPct)}%
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-violet-300/90">
+                    Generation progress
+                  </p>
+                  <div className="mt-2 flex items-start justify-between gap-3">
+                    <p className="min-w-0 flex-1 text-left text-[12px] font-medium leading-snug text-white/80 md:text-[13px]">
+                      {statusLine}
+                    </p>
+                    <span className="shrink-0 font-[var(--font-montserrat)] text-[22px] font-bold tabular-nums tracking-tight text-white md:text-2xl">
+                      <span className="bg-gradient-to-br from-violet-200 via-white to-cyan-200/90 bg-clip-text text-transparent">
+                        {pctRounded}
+                      </span>
+                      <span className="text-[14px] font-semibold text-white/50 md:text-base">
+                        %
+                      </span>
                     </span>
                   </div>
-                  <div className="relative mt-2.5 h-2.5 w-full overflow-hidden rounded-full bg-white/[0.08] ring-1 ring-white/[0.06]">
+                  <div className="relative mt-3 h-2.5 w-full overflow-hidden rounded-full bg-white/[0.08] ring-1 ring-white/[0.06]">
                     <motion.div
                       className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-violet-500 via-indigo-400 to-cyan-300"
                       style={{
                         boxShadow:
-                          "0 0 16px rgba(167,139,250,0.45), 0 0 32px rgba(56,189,248,0.2)",
+                          "0 0 16px rgba(167,139,250,0.45), 0 0 28px rgba(56,189,248,0.18)",
                       }}
                       initial={false}
-                      animate={{
-                        width: `${Math.min(100, Math.max(0, devPct))}%`,
+                      animate={{ width: `${pctRounded}%` }}
+                      transition={{
+                        type: "spring",
+                        stiffness: 200,
+                        damping: 26,
                       }}
-                      transition={{ type: "spring", stiffness: 180, damping: 24 }}
                     />
                     {directorGenerationBusy && !directorPlanApplied ? (
                       <motion.div
-                        className="pointer-events-none absolute inset-y-0 w-[36%] bg-gradient-to-r from-transparent via-white/35 to-transparent"
-                        animate={{ x: ["-20%", "120%"] }}
+                        className="pointer-events-none absolute inset-y-0 w-[38%] bg-gradient-to-r from-transparent via-white/30 to-transparent"
+                        animate={{ x: ["-25%", "125%"] }}
                         transition={{
-                          duration: 1.25,
+                          duration: 1.2,
                           repeat: Number.POSITIVE_INFINITY,
                           ease: "linear",
                         }}
@@ -123,14 +142,9 @@ export function StudioScrapeScreen() {
                   </div>
                 </div>
               </div>
-            ) : null}
-          </section>
 
-          <section className="relative min-h-[320px] overflow-hidden rounded-2xl border border-white/[0.08] bg-[#0a0a0a] lg:min-h-0">
-            <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_50%_0%,rgba(124,58,237,0.12),transparent),radial-gradient(ellipse_70%_50%_at_100%_100%,rgba(59,130,246,0.1),transparent)]" />
-            <div className="relative z-10 flex h-full min-h-[320px] flex-col p-4 md:p-6">
               {/* Fake browser chrome — product walkthrough frame */}
-              <div className="flex flex-1 flex-col overflow-hidden rounded-xl border border-white/[0.1] bg-[#111] shadow-[0_24px_80px_rgba(0,0,0,0.65)]">
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-white/[0.1] bg-[#111] shadow-[0_24px_80px_rgba(0,0,0,0.65)]">
                 <div className="flex items-center gap-2 border-b border-white/[0.08] bg-[#1a1a1c] px-3 py-2.5">
                   <span className="size-2.5 rounded-full bg-[#ff5f57]" />
                   <span className="size-2.5 rounded-full bg-[#febc2e]" />
