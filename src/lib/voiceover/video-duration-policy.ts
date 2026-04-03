@@ -1,5 +1,3 @@
-import { secondsToFrames } from "@/lib/types/timeline";
-
 export const MIN_VIDEO_DURATION_SEC = 32;
 export const OUTRO_BUFFER_SEC = 3.5;
 

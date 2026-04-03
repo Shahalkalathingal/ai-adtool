@@ -71,7 +71,7 @@ export function filterProductImageUrlsForNiche(
   urls: string[],
   niche: AdNicheId,
 ): string[] {
-  let next = filterGlobalBlockedUnsplashUrls(urls);
+  const next = filterGlobalBlockedUnsplashUrls(urls);
   if (niche !== "automotive") return next;
   const filtered = filterUrlsForAutomotiveVertical(next);
   if (filtered.length >= 6) return filtered;

@@ -1,8 +1,5 @@
 import type { DirectorPlan, DirectorScene } from "@/lib/types/director-plan";
-import {
-  DIRECTOR_PLAN_FALLBACK_STILL,
-  ensureDirectorPlanSceneImages,
-} from "@/lib/types/director-plan";
+import { ensureDirectorPlanSceneImages } from "@/lib/types/director-plan";
 import {
   isLowResOrGenericImageUrl,
   isProblematicImageUrlForAds,

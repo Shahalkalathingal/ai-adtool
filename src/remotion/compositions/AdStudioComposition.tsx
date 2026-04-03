@@ -11,8 +11,6 @@ import {
 import {
   getMusicClipAtSecond,
   getVoiceoverClipAtSecond,
-  getTextClipAtSecond,
-  headlineFromRemotionClip,
   type RemotionClipInput,
   type RemotionTrackInput,
 } from "@/remotion/lib/active-clip";
@@ -1291,14 +1289,6 @@ export function AdStudioComposition({
   const { fps, durationInFrames } = useVideoConfig();
   const t = frame / fps;
 
-  const textClip = getTextClipAtSecond(
-    t,
-    timeline.tracks,
-    timeline.clipsById,
-  );
-
-  const headline = headlineFromRemotionClip(textClip);
-
   const phone = brandKit.phone || metaString(metadata, "phone");
   const address = brandKit.address || metaString(metadata, "address") || "";
   const website = brandKit.website || metaString(metadata, "website") || "";
@@ -1418,15 +1408,6 @@ export function AdStudioComposition({
   const bannerHandoffFade = onEndCard ? endHandoffOpacity : 1;
   const headerHandoffFade = bannerHandoffFade;
 
-  const textClipStartF = textClip ? Math.round(textClip.startTime * fps) : 0;
-  const textRelFrame = Math.max(0, frame - textClipStartF);
-  const captionText = headline.trim();
-  const captionOpacity = interpolate(
-    textRelFrame,
-    [4, 22],
-    [0, 1],
-    INTERP_CLAMP,
-  );
   const endStartForScenes = endStartSec ?? Infinity;
 
   return (
