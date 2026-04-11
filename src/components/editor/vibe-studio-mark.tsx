@@ -1,18 +1,25 @@
-import { VIBE_STUDIO } from "@/lib/ui/vibe-studio-tokens";
-
-/** Purple “V” mark + Studio wordmark — Vibe Studio header. */
-export function VibeStudioMark({ className }: { className?: string }) {
+/** Header wordmark — matches studio landing (Ai Ad Tool). */
+export function AiAdToolMark({ className }: { className?: string }) {
   return (
-    <div className={["inline-flex items-center gap-3", className].filter(Boolean).join(" ")}>
-      <div
-        className="flex size-9 shrink-0 items-center justify-center rounded-lg shadow-[0_4px_14px_rgba(124,58,237,0.42)]"
-        style={{ backgroundColor: VIBE_STUDIO.logoMark }}
+    <div
+      className={["inline-flex items-center gap-2.5", className]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      <span
+        aria-hidden
+        className="grid size-9 shrink-0 place-items-center rounded-[10px] bg-gradient-to-br from-violet-500 via-violet-600 to-indigo-700 text-[11px] font-extrabold uppercase tracking-[0.06em] text-white shadow-[0_4px_24px_rgba(124,58,237,0.35)] ring-1 ring-inset ring-white/15"
       >
-        <span className="font-[var(--font-montserrat)] text-xl font-bold leading-none text-white">
-          V
+        Ai
+      </span>
+      <span className="font-[var(--font-montserrat)] text-[16px] font-bold leading-tight tracking-[-0.04em] text-white md:text-[17px]">
+        <span className="bg-gradient-to-r from-white via-white to-violet-200/90 bg-clip-text text-transparent">
+          Ai Ad Tool
         </span>
-      </div>
-      <span className="text-lg font-bold tracking-tight text-white">Studio</span>
+      </span>
     </div>
   );
 }
+
+/** @deprecated Use AiAdToolMark */
+export const VibeStudioMark = AiAdToolMark;

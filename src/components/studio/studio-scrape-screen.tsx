@@ -60,7 +60,7 @@ export function StudioScrapeScreen() {
         <div className="grid min-h-[calc(100dvh-3rem)] w-full grid-cols-1 gap-4 lg:min-h-[calc(100dvh-4rem)] lg:grid-cols-2 lg:gap-6">
           <section className="flex flex-col justify-center rounded-2xl border border-white/[0.08] bg-[#0a0a0a] px-8 py-12 md:px-12 md:py-16">
             <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-violet-300/90">
-              Vibe studio
+              Ai Ad Tool
             </p>
             <h1 className="mt-5 max-w-[420px] font-[var(--font-montserrat)] text-[32px] font-bold leading-[1.15] tracking-[-0.02em] text-white md:text-[38px]">
               We&apos;re creating your video.
@@ -141,7 +141,7 @@ export function StudioScrapeScreen() {
                   <span className="size-2.5 rounded-full bg-[#28c840]" />
                   <div className="ml-3 flex min-w-0 flex-1 items-center rounded-md border border-white/[0.08] bg-black/40 px-3 py-1">
                     <span className="truncate text-[11px] text-white/45">
-                      platform.vibe.co/studio
+                      https://ai-adtool.vercel.app/
                     </span>
                   </div>
                 </div>

@@ -13,10 +13,10 @@ export default function StudioProjectLayout({ children }: { children: ReactNode 
         aria-live="polite"
       >
         <p className="text-center text-[11px] font-semibold uppercase tracking-[0.2em] text-violet-300/90">
-          Vibe studio
+          Ai Ad Tool
         </p>
         <h1 className="mt-5 max-w-[320px] text-center font-[var(--font-montserrat)] text-[26px] font-bold leading-snug tracking-[-0.02em] text-white">
-          You need a bigger screen to access Vibe
+          You need a bigger screen to use the editor
         </h1>
         <p className="mt-4 max-w-[340px] text-center text-[14px] leading-relaxed text-white/65">
           Switch to a computer or a large tablet (landscape). The editor doesn&apos;t

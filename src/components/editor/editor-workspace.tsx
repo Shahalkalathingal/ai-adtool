@@ -11,7 +11,7 @@ import { EditorRemotionPlayer } from "@/components/editor/editor-remotion-player
 import { InspectorPanel } from "@/components/editor/inspector-panel";
 import { MultiTrackTimeline } from "@/components/editor/multi-track-timeline";
 import { StudioShell } from "@/components/editor/studio-shell";
-import { VibeStudioMark } from "@/components/editor/vibe-studio-mark";
+import { AiAdToolMark } from "@/components/editor/vibe-studio-mark";
 import {
   STUDIO_ASSEMBLY_MS,
   useStudioEntranceStore,
@@ -192,7 +192,7 @@ export function EditorWorkspace({ projectId }: EditorWorkspaceProps) {
               : { duration: assemblySec, ease: assemblyEase }
           }
         >
-          <VibeStudioMark />
+          <AiAdToolMark />
           <Button
             type="button"
             size="icon"

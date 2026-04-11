@@ -1,10 +1,10 @@
-/* Vibe Studio Landing (Route 1) */
+/* AI Ad Tool — studio landing */
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { useRouter } from "next/navigation";
-import { ChevronDown, Search } from "lucide-react";
+import { Search } from "lucide-react";
 import {
   buildStudioEditorPath,
   makeProjectId,
@@ -211,36 +211,26 @@ export default function StudioLandingPage() {
   };
 
   return (
-    <div className="min-h-dvh bg-[#000000] font-sans text-white antialiased">
-      {/* Top nav — Vibe parity */}
+    <div className="flex min-h-dvh flex-col bg-[#000000] font-sans text-white antialiased">
       <header className="sticky top-0 z-20 border-b border-white/[0.06] bg-[#000000]/95 backdrop-blur-md">
-        <div className="mx-auto flex h-[64px] max-w-[1200px] items-center justify-between px-5 md:px-8">
-          <div className="flex items-center gap-2">
-            <span className="font-[var(--font-montserrat)] text-[22px] font-bold tracking-[-0.02em] text-white lowercase">
-              vibe
+        <div className="mx-auto flex h-[64px] max-w-[1200px] items-center px-5 md:px-8">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <span
+              aria-hidden
+              className="grid size-9 shrink-0 place-items-center rounded-[10px] bg-gradient-to-br from-violet-500 via-violet-600 to-indigo-700 text-[11px] font-extrabold uppercase tracking-[0.06em] text-white shadow-[0_4px_24px_rgba(124,58,237,0.35)] ring-1 ring-inset ring-white/15"
+            >
+              Ai
+            </span>
+            <span className="font-[var(--font-montserrat)] text-[17px] font-bold leading-tight tracking-[-0.04em] md:text-[18px]">
+              <span className="bg-gradient-to-r from-white via-white to-violet-200/90 bg-clip-text text-transparent">
+                Ai Ad Tool
+              </span>
             </span>
           </div>
-          <nav className="hidden items-center gap-7 text-[14px] font-medium text-white/75 md:flex">
-            {["Product", "Industries", "Pricing", "Testimonials", "Resources"].map(
-              (t) => (
-                <a
-                  key={t}
-                  className="inline-flex items-center gap-0.5 hover:text-white"
-                  href="#"
-                >
-                  {t}
-                  <ChevronDown className="size-3.5 opacity-60" aria-hidden />
-                </a>
-              ),
-            )}
-            <a className="text-white hover:text-white/90" href="#">
-              Log in →
-            </a>
-          </nav>
         </div>
       </header>
 
-      <main className="mx-auto flex max-w-[880px] flex-col items-center px-5 pb-20 pt-14 md:px-8 md:pt-16">
+      <main className="mx-auto flex w-full max-w-[880px] flex-1 flex-col items-center px-5 pb-16 pt-14 md:px-8 md:pt-16">
         <h1 className="text-center font-[var(--font-montserrat)] text-[40px] font-extrabold leading-[1.08] tracking-[-0.03em] text-white md:text-[52px] md:leading-[1.06]">
           No Creative? No Problem.
           <br />
@@ -321,7 +311,7 @@ export default function StudioLandingPage() {
         {/* Checklist */}
         <ul className="mt-8 flex flex-col items-start gap-3 text-[15px] text-white/70 md:flex-row md:flex-wrap md:items-center md:justify-center md:gap-x-10 md:gap-y-3">
           {[
-            "Video ready in less that 30 seconds",
+            "Video ready in less than 30 seconds",
             "100% free",
             "Based on your business & customizable",
           ].map((t) => (
@@ -359,6 +349,20 @@ export default function StudioLandingPage() {
           </span>
         </button>
       </main>
+
+      <footer className="mt-auto border-t border-white/[0.06] py-6">
+        <p className="text-center text-[13px] text-white/45 md:text-[14px]">
+          Developed by{" "}
+          <a
+            href="https://www.linkedin.com/in/shahal-kalathingal/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-medium text-violet-300/90 underline decoration-violet-500/40 underline-offset-2 transition-colors hover:text-violet-200 hover:decoration-violet-400/60"
+          >
+            Shahal Kalathingal
+          </a>
+        </p>
+      </footer>
     </div>
   );
 }
