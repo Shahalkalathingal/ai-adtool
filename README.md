@@ -1,5 +1,29 @@
 # AI Ad Studio
 
+🚀 Turn any product URL into a fully generated ad video (script, scenes, voiceover, and visuals)
+
+🔗 Live Demo: https://ai-adtool.vercel.app/studio
+
+---
+
+### ✨ What it does
+- Paste a product or business URL  
+- AI generates a complete ad (script + scene direction + visuals)  
+- Auto voiceover + multi-scene video  
+- Fully editable timeline (text, styling, audio, layout)  
+- Export-ready ad creatives  
+
+---
+
+### 🧠 Why it’s interesting
+This project is not just ad generation — it’s a full **AI creative pipeline** combining:
+- content extraction  
+- structured generation (director-style planning)  
+- programmatic video rendering  
+
+Built to explore how AI can compress the entire ad creation workflow into seconds.
+
+
 **AI-assisted video ad authoring** — turn a brand URL into a multi-scene storyboard, editable timeline, and exportable **16:9** creative. Built as a production-minded **Next.js** app with **Remotion** for programmatic video, **Gemini** for planning and copy, and **PostgreSQL** for project state.
 
 ---
